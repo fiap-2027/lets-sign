@@ -1,61 +1,53 @@
 package com.letsign.mobile.data.api
 
-import com.google.gson.Gson
-import com.google.gson.GsonBuilder
 import com.letsign.mobile.BuildConfig
+import com.letsign.mobile.data.local.TokenManager
+import kotlinx.serialization.json.Json
 import okhttp3.Interceptor
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.Response
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
+import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import java.util.concurrent.TimeUnit
 
 object ApiClient {
-    private const val BASE_URL = "http://10.0.2.2:3000/" // Use 10.0.2.2 for Android emulator to access localhost
-    // For physical device, use your machine's IP: "http://192.168.x.x:3000/"
 
-    private val loggingInterceptor = HttpLoggingInterceptor().apply {
-        level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BODY else HttpLoggingInterceptor.Level.NONE
+    val json = Json {
+        ignoreUnknownKeys = true
+        explicitNulls = false
+        coerceInputValues = true
     }
 
-    private val authInterceptor = Interceptor { chain ->
-        val original = chain.request()
-        val token = TokenManager.getAccessToken()
-        val requestBuilder = original.newBuilder()
-            .header("Accept", "application/json")
-            .header("Content-Type", "application/json")
-        
-        token?.let {
-            requestBuilder.header("Authorization", "Bearer $it")
+    fun createRetrofit(tokenManager: TokenManager, baseUrl: String = BuildConfig.API_BASE_URL): Retrofit {
+        val loggingInterceptor = HttpLoggingInterceptor().apply {
+            level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BODY else HttpLoggingInterceptor.Level.NONE
+            redactHeader("Authorization")
         }
-        
-        val request = requestBuilder.build()
-        chain.proceed(request)
+
+        // Content-Type fica por conta do Retrofit (JSON ou multipart); forçar aqui quebrava o upload de PDF.
+        val authInterceptor = Interceptor { chain ->
+            val token = tokenManager.getAccessToken()
+            val requestBuilder = chain.request().newBuilder().header("Accept", "application/json")
+            token?.let { requestBuilder.header("Authorization", "Bearer $it") }
+            val response = chain.proceed(requestBuilder.build())
+            // 401 com token = sessão expirada. (No login, 401 é "senha errada" e não tem token.)
+            if (response.code == 401 && token != null) tokenManager.onUnauthorized()
+            response
+        }
+
+        val okHttpClient = OkHttpClient.Builder()
+            .addInterceptor(authInterceptor)
+            .addInterceptor(loggingInterceptor)
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .writeTimeout(60, TimeUnit.SECONDS)
+            .build()
+
+        return Retrofit.Builder()
+            .baseUrl(baseUrl)
+            .client(okHttpClient)
+            .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
+            .build()
     }
-
-    private val okHttpClient = OkHttpClient.Builder()
-        .addInterceptor(loggingInterceptor)
-        .addInterceptor(authInterceptor)
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .writeTimeout(30, TimeUnit.SECONDS)
-        .retryOnConnectionFailure(true)
-        .build()
-
-    private val gson = GsonBuilder()
-        .setLenient()
-        .setDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
-        .create()
-
-    private val retrofit = Retrofit.Builder()
-        .baseUrl(BASE_URL)
-        .client(okHttpClient)
-        .addConverterFactory(GsonConverterFactory.create(gson))
-        .build()
-
-    val authApi: AuthApi = retrofit.create(AuthApi::class.java)
-    val documentsApi: DocumentsApi = retrofit.create(DocumentsApi::class.java)
-    val signersApi: SignersApi = retrofit.create(SignersApi::class.java)
 }

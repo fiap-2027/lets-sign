@@ -5,110 +5,212 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.FileDownload
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.letsign.mobile.domain.model.DocumentStatus
+import com.letsign.mobile.domain.model.SignerStatus
+import com.letsign.mobile.presentation.theme.StatusColors
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LetsSignTopAppBar(
     title: String,
     showBackButton: Boolean = false,
     onBackClick: () -> Unit = {},
-    actions: @Composable () -> Unit = {}
+    subtitle: String? = null,
+    actions: @Composable RowScope.() -> Unit = {}
 ) {
     TopAppBar(
-        title = { Text(text = title, fontWeight = FontWeight.Bold, color = Color.White) },
-        navigationIcon = if (showBackButton) {
-            @Composable {
+        title = {
+            Column {
+                Text(text = title, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (subtitle != null) Text(text = subtitle, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        },
+        navigationIcon = {
+            if (showBackButton) {
                 IconButton(onClick = onBackClick) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Voltar", tint = Color.White)
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Voltar")
                 }
             }
-        } else null,
+        },
         actions = actions,
         colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = Color(0xFFC2185B),
-            titleContentColor = Color.White,
-            navigationIconContentColor = Color.White,
-            actionIconContentColor = Color.White
-        ),
-        modifier = Modifier.fillMaxWidth()
+            containerColor = MaterialTheme.colorScheme.primary,
+            titleContentColor = MaterialTheme.colorScheme.onPrimary,
+            navigationIconContentColor = MaterialTheme.colorScheme.onPrimary,
+            actionIconContentColor = MaterialTheme.colorScheme.onPrimary
+        )
     )
 }
 
 @Composable
 fun StatusBadge(
     text: String,
-    color: androidx.compose.ui.graphics.Color = androidx.compose.ui.graphics.Color(0xFFC2185B),
-    textColor: androidx.compose.ui.graphics.Color = androidx.compose.ui.graphics.Color.White
+    color: Color = MaterialTheme.colorScheme.primary,
+    textColor: Color = Color.White
 ) {
-    androidx.compose.material3.Text(
-        text = text,
-        color = textColor,
-        fontSize = 12.sp,
-        fontWeight = FontWeight.Medium,
-        modifier = Modifier
-            .padding(horizontal = 8.dp, vertical = 4.dp)
-            .background(color, shape = RoundedCornerShape(12.dp))
-            .padding(horizontal = 8.dp, vertical = 2.dp)
+    Surface(color = color, contentColor = textColor, shape = RoundedCornerShape(12.dp)) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelMedium,
+            maxLines = 1,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
+        )
+    }
+}
+
+fun DocumentStatus.label(): String = when (this) {
+    DocumentStatus.DRAFT -> "Rascunho"
+    DocumentStatus.PENDING -> "Enviado"
+    DocumentStatus.PARTIALLY_SIGNED -> "Parcial"
+    DocumentStatus.COMPLETED -> "Concluído"
+    DocumentStatus.CANCELLED -> "Cancelado"
+}
+
+@Composable
+fun DocumentStatusChip(status: DocumentStatus) {
+    val color = when (status) {
+        DocumentStatus.DRAFT -> StatusColors.Gray
+        DocumentStatus.PENDING -> StatusColors.Amber
+        DocumentStatus.PARTIALLY_SIGNED -> StatusColors.Orange
+        DocumentStatus.COMPLETED -> StatusColors.Green
+        DocumentStatus.CANCELLED -> StatusColors.Red
+    }
+    StatusBadge(text = status.label(), color = color)
+}
+
+fun SignerStatus.label(): String = when (this) {
+    SignerStatus.PENDING -> "Pendente"
+    SignerStatus.VIEWED -> "Visualizado"
+    SignerStatus.SIGNED -> "Assinado"
+    SignerStatus.REJECTED -> "Recusado"
+}
+
+@Composable
+fun SignerStatusChip(status: SignerStatus) {
+    val color = when (status) {
+        SignerStatus.PENDING -> StatusColors.Blue
+        SignerStatus.VIEWED -> StatusColors.Orange
+        SignerStatus.SIGNED -> StatusColors.Green
+        SignerStatus.REJECTED -> StatusColors.Red
+    }
+    StatusBadge(text = status.label(), color = color)
+}
+
+/** Cor fixa por signatário (mesma cor no editor de campos, na revisão e na assinatura). */
+private val SignerPalette = listOf(
+    Color(0xFF3949AB), Color(0xFF00897B), Color(0xFFD81B60), Color(0xFFF4511E), Color(0xFF8E24AA), Color(0xFF6D4C41)
+)
+
+fun signerColor(index: Int): Color = SignerPalette[(index.coerceAtLeast(0)) % SignerPalette.size]
+
+@Composable
+fun Avatar(initials: String, color: Color = MaterialTheme.colorScheme.secondaryContainer, contentColor: Color = MaterialTheme.colorScheme.onSecondaryContainer, size: Int = 40) {
+    Surface(shape = CircleShape, color = color, contentColor = contentColor, modifier = Modifier.size(size.dp)) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(text = initials.ifEmpty { "?" }, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+fun SectionCard(
+    title: String,
+    modifier: Modifier = Modifier,
+    trailing: @Composable (() -> Unit)? = null,
+    content: @Composable () -> Unit
+) {
+    Card(modifier = modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(text = title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                trailing?.invoke()
+            }
+            content()
+        }
+    }
+}
+
+@Composable
+fun ErrorBanner(message: String, actionText: String? = null, onAction: (() -> Unit)? = null) {
+    Surface(color = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer, shape = RoundedCornerShape(12.dp)) {
+        Row(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.ErrorOutline, contentDescription = null)
+            Text(text = message, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
+            if (actionText != null && onAction != null) {
+                TextButton(onClick = onAction) { Text(actionText, color = MaterialTheme.colorScheme.onErrorContainer, fontWeight = FontWeight.Bold) }
+            }
+        }
+    }
+}
+
+@Composable
+fun ConfirmDialog(
+    title: String,
+    text: String,
+    confirmText: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+    destructive: Boolean = false
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { Text(text) },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(confirmText, color = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
     )
 }
 
+/** Mostra [message] uma vez no snackbar e avisa [onShown] para limpar o estado. */
 @Composable
-fun DocumentStatusChip(status: com.letsign.mobile.domain.model.DocumentStatus) {
-    val (text, color) = when (status) {
-        com.letsign.mobile.domain.model.DocumentStatus.DRAFT -> "Rascunho" to Color(0xFF9E9E9E)
-        com.letsign.mobile.domain.model.DocumentStatus.PENDING -> "Pendente" to Color(0xFFFFC107)
-        com.letsign.mobile.domain.model.DocumentStatus.PARTIALLY_SIGNED -> "Parcial" to Color(0xFFF57C00)
-        com.letsign.mobile.domain.model.DocumentStatus.COMPLETED -> "Concluído" to Color(0xFF4CAF50)
-        com.letsign.mobile.domain.model.DocumentStatus.CANCELLED -> "Cancelado" to Color(0xFFF44336)
+fun SnackbarMessage(host: SnackbarHostState, message: String?, onShown: () -> Unit) {
+    LaunchedEffect(message) {
+        if (message != null) {
+            host.showSnackbar(message)
+            onShown()
+        }
     }
-    StatusBadge(text = text, color = color)
-}
-
-@Composable
-fun SignerStatusChip(status: com.letsign.mobile.domain.model.SignerStatus) {
-    val (text, color) = when (status) {
-        com.letsign.mobile.domain.model.SignerStatus.PENDING -> "Pendente" to Color(0xFF2196F3)
-        com.letsign.mobile.domain.model.SignerStatus.VIEWED -> "Visualizado" to Color(0xFFFF9800)
-        com.letsign.mobile.domain.model.SignerStatus.SIGNED -> "Assinado" to Color(0xFF4CAF50)
-        com.letsign.mobile.domain.model.SignerStatus.REJECTED -> "Recusado" to Color(0xFFF44336)
-    }
-    StatusBadge(text = text, color = color)
 }
 
 @Composable
@@ -120,34 +222,30 @@ fun EmptyState(
     onAction: (() -> Unit)? = null
 ) {
     Box(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().padding(32.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = Color(0xFFBDBDBD),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                 modifier = Modifier.size(80.dp)
             )
-            androidx.compose.foundation.layout.Spacer(modifier = Modifier.padding(16.dp))
-            Text(text = title, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF757575))
-            androidx.compose.foundation.layout.Spacer(modifier = Modifier.padding(8.dp))
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(text = title, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
             Text(
                 text = subtitle,
-                fontSize = 14.sp,
-                color = Color(0xFF9E9E9E),
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 32.dp)
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
             )
-            actionText?.let { text ->
-                androidx.compose.foundation.layout.Spacer(modifier = Modifier.padding(24.dp))
-                Button(onClick = onAction!!) {
-                    Text(text = text)
-                }
+            if (actionText != null && onAction != null) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(onClick = onAction) { Text(text = actionText) }
             }
         }
     }
@@ -155,27 +253,46 @@ fun EmptyState(
 
 @Composable
 fun LoadingOverlay(isLoading: Boolean, message: String = "Carregando...") {
-    if (isLoading) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Box(
-                modifier = Modifier
-                    .padding(24.dp)
-                    .background(Color.White, shape = RoundedCornerShape(16.dp))
-                    .padding(24.dp)
+    if (!isLoading) return
+    Box(
+        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.3f)),
+        contentAlignment = Alignment.Center
+    ) {
+        Surface(shape = RoundedCornerShape(16.dp), tonalElevation = 6.dp, shadowElevation = 6.dp) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    androidx.compose.material3.CircularProgressIndicator(
-                        color = Color(0xFFC2185B),
-                        modifier = Modifier.size(40.dp)
-                    )
-                    androidx.compose.foundation.layout.Spacer(modifier = Modifier.padding(16.dp))
-                    Text(text = message, fontSize = 16.sp, color = Color(0xFF424242))
-                }
+                CircularProgressIndicator(modifier = Modifier.size(40.dp))
+                Text(text = message, style = MaterialTheme.typography.bodyLarge)
+            }
+        }
+    }
+}
+
+@Composable
+fun CenteredLoading() {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+}
+
+@Composable
+fun BottomActions(
+    primaryText: String,
+    onPrimary: () -> Unit,
+    modifier: Modifier = Modifier,
+    secondaryText: String? = null,
+    onSecondary: (() -> Unit)? = null,
+    primaryEnabled: Boolean = true,
+    loading: Boolean = false
+) {
+    Surface(tonalElevation = 3.dp, modifier = modifier.fillMaxWidth()) {
+        Row(modifier = Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (secondaryText != null && onSecondary != null) {
+                OutlinedButton(onClick = onSecondary, modifier = Modifier.weight(1f)) { Text(secondaryText) }
+            }
+            Button(onClick = onPrimary, enabled = primaryEnabled && !loading, modifier = Modifier.weight(1f)) {
+                if (loading) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp) else Text(primaryText)
             }
         }
     }

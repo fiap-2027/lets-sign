@@ -1,7 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
-    <include domain="sharedpref" path="." />
-    <include domain="database" path="." />
-    <include domain="file" path="." />
-    <exclude domain="file" path="cache/" />
+    <!-- O token JWT não pode sair do aparelho em backups. -->
+    <exclude domain="sharedpref" path="lets_sign_tokens.xml" />
 </full-backup-content>

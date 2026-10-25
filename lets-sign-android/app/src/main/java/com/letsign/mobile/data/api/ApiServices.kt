@@ -1,18 +1,17 @@
 package com.letsign.mobile.data.api
 
-import com.letsign.mobile.domain.model.Document
-import com.letsign.mobile.domain.model.Participant
-import com.letsign.mobile.domain.model.SignatureField
-import com.letsign.mobile.domain.model.User
 import com.letsign.mobile.domain.model.AuthTokens
-import com.letsign.mobile.domain.model.AuditEvent
-import com.letsign.mobile.domain.model.SignerStatus
-import kotlinx.coroutines.flow.Flow
+import com.letsign.mobile.domain.model.Document
+import com.letsign.mobile.domain.model.User
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.*
+
+// Contrato espelhado de letssign_backend/nodejs_space (NestJS). Swagger: http://localhost:3000/api
 
 interface AuthApi {
     @POST("auth/login")
@@ -20,19 +19,15 @@ interface AuthApi {
 
     @POST("auth/register")
     suspend fun register(@Body body: RegisterRequest): Response<AuthTokens>
-
-    @GET("auth/me")
-    suspend fun me(): Response<User>
-
-    @POST("auth/refresh")
-    suspend fun refresh(): Response<AuthTokens>
 }
 
+@Serializable
 data class LoginRequest(
     val email: String,
     val senha: String
 )
 
+@Serializable
 data class RegisterRequest(
     val nome: String,
     val email: String,
@@ -41,19 +36,31 @@ data class RegisterRequest(
 )
 
 interface DocumentsApi {
+    /** Admin: cria o documento em rascunho a partir do PDF (multipart `pdf` + `titulo`). */
     @Multipart
     @POST("documents")
     suspend fun createDocument(
-        @Part("pdf") pdf: MultipartBody.Part,
+        @Part pdf: MultipartBody.Part,
         @Part("titulo") titulo: RequestBody
     ): Response<Document>
 
-    @GET("documents")
-    suspend fun listDocuments(
-        @Query("status") status: String?,
-        @Query("situacao") situacao: String?
-    ): Response<List<Document>>
+    /**
+     * Admin: substitui o PDF de um documento não concluído. O backend preserva a versão anterior,
+     * mantém os participantes (com assinaturas zeradas), mantém os campos das páginas que ainda existem
+     * e volta o documento para rascunho (novo fluxo).
+     */
+    @Multipart
+    @POST("documents/{id}/version")
+    suspend fun newVersion(
+        @Path("id") id: String,
+        @Part pdf: MultipartBody.Part
+    ): Response<Document>
 
+    /** Admin: documentos que criou. Signatário: documentos para os quais foi convidado. */
+    @GET("documents")
+    suspend fun listDocuments(): Response<List<Document>>
+
+    /** Detalhe com participantes, campos e eventos de auditoria. Para o signatário, marca como visualizado. */
     @GET("documents/{id}")
     suspend fun getDocument(@Path("id") id: String): Response<Document>
 
@@ -63,68 +70,35 @@ interface DocumentsApi {
         @Query("tipo") tipo: String
     ): Response<ResponseBody>
 
-    @PUT("documents/{id}/participants")
-    suspend fun setParticipants(
-        @Path("id") id: String,
-        @Body body: ParticipantsRequest
-    ): Response<Document>
-
-    @POST("documents/{id}/fields")
-    suspend fun setFields(
-        @Path("id") id: String,
-        @Body body: FieldsRequest
-    ): Response<Document>
-
+    /** Define participantes e campos e envia. Idempotente: repetir não duplica as solicitações. */
     @POST("documents/{id}/send")
     suspend fun sendDocument(
         @Path("id") id: String,
         @Body body: SendRequest
     ): Response<SendResponse>
 
-    @Multipart
-    @POST("documents/{id}/version")
-    suspend fun newVersion(
-        @Path("id") id: String,
-        @Part("pdf") pdf: MultipartBody.Part,
-        @Part("titulo") titulo: RequestBody
-    ): Response<Document>
-
     @POST("documents/{id}/sign")
     suspend fun signDocument(
         @Path("id") id: String,
         @Body body: SignRequest
-    ): Response<Document>
+    ): Response<ActionResponse>
 
     @POST("documents/{id}/reject")
     suspend fun rejectDocument(
         @Path("id") id: String,
         @Body body: RejectRequest
-    ): Response<Document>
-
-    @GET("documents/{id}/audit")
-    suspend fun getAudit(@Path("id") id: String): Response<AuditResponse>
-
-    @GET("documents/{id}/verify")
-    suspend fun verifyHash(
-        @Path("id") id: String,
-        @Query("hash") hash: String
-    ): Response<VerifyResponse>
+    ): Response<ActionResponse>
 }
 
-data class ParticipantsRequest(
-    val participantes: List<ParticipantRequest>
-)
-
+@Serializable
 data class ParticipantRequest(
     val signerId: String,
     val roleLabel: String,
     val required: Boolean = true
 )
 
-data class FieldsRequest(
-    val fields: List<FieldRequest>
-)
-
+/** Coordenadas normalizadas de 0 a 1 (x/y a partir do canto superior esquerdo); página começa em 1. */
+@Serializable
 data class FieldRequest(
     val signerId: String,
     val page: Int,
@@ -136,50 +110,48 @@ data class FieldRequest(
     val roleLabel: String? = null
 )
 
+@Serializable
 data class SendRequest(
     val mensagem: String? = null,
     val participantes: List<ParticipantRequest>? = null,
     val fields: List<FieldRequest>? = null
 )
 
+@Serializable
 data class SendResponse(
     val jaEnviado: Boolean,
     val mensagem: String,
     val documento: Document
 )
 
+@Serializable
 data class SignRequest(
     val assinaturaImagemBase64: String,
-    val gestureMetadata: String? = null
+    val gestureMetadata: JsonObject? = null
 )
 
+@Serializable
 data class RejectRequest(
     val motivo: String
 )
 
-data class AuditResponse(
-    val documentId: String,
-    val titulo: String,
-    val versaoAtual: Int,
-    val hashAtual: String,
-    val hashFinal: String?,
-    val status: String,
-    val eventos: List<AuditEvent>
+/** Resposta de /sign e /reject. */
+@Serializable
+data class ActionResponse(
+    val mensagem: String,
+    val documento: Document
 )
 
-data class VerifyResponse(
-    val valido: Boolean,
-    val tipo: String?,
-    val versao: Int?,
-    val mensagem: String?
+/** Corpo de erro padrão do backend (GlobalExceptionFilter). */
+@Serializable
+data class ApiError(
+    val mensagem: String? = null,
+    val erros: List<String> = emptyList()
 )
 
 interface SignersApi {
     @GET("signers")
-    suspend fun listSigners(@Query("busca") busca: String?): Response<List<User>>
-
-    @GET("signers/{id}")
-    suspend fun getSigner(@Path("id") id: String): Response<User>
+    suspend fun listSigners(): Response<List<User>>
 
     @POST("signers")
     suspend fun createSigner(@Body body: SignerRequest): Response<User>
@@ -191,9 +163,11 @@ interface SignersApi {
     suspend fun deleteSigner(@Path("id") id: String): Response<Unit>
 }
 
+/** [senha] nula no PATCH = manter a senha atual (o campo é omitido do JSON). */
+@Serializable
 data class SignerRequest(
     val nome: String,
     val email: String,
     val telefone: String?,
-    val senha: String
+    val senha: String? = null
 )

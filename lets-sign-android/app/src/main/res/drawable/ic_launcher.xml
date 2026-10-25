@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ícone provisório: documento branco sobre círculo rosa. Troque por um ícone adaptativo final. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <path android:fillColor="#C2185B" android:pathData="M24,0a24,24 0,1 1,0 48a24,24 0,1 1,0 -48z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M16,11h11l7,7v19a2,2 0,0 1,-2 2H16a2,2 0,0 1,-2 -2V13a2,2 0,0 1,2 -2z" />
+    <path android:fillColor="#F8BBD0" android:pathData="M27,11v7h7z" />
+    <path android:strokeColor="#C2185B" android:strokeWidth="2" android:strokeLineCap="round" android:pathData="M18,32c2,-3 4,-3 5,0s3,3 5,-2" />
+</vector>

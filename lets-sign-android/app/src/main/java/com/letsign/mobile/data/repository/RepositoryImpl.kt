@@ -1,458 +1,287 @@
 package com.letsign.mobile.data.repository
 
-import com.letsign.mobile.data.api.ApiClient
-import com.letsign.mobile.data.api.ApiServices
+import com.letsign.mobile.data.api.AuthApi
+import com.letsign.mobile.data.api.DocumentsApi
+import com.letsign.mobile.data.api.FieldRequest
+import com.letsign.mobile.data.api.LoginRequest
+import com.letsign.mobile.data.api.ParticipantRequest
+import com.letsign.mobile.data.api.RegisterRequest
+import com.letsign.mobile.data.api.RejectRequest
+import com.letsign.mobile.data.api.SendRequest
+import com.letsign.mobile.data.api.SignRequest
+import com.letsign.mobile.data.api.SignerRequest
+import com.letsign.mobile.data.api.SignersApi
 import com.letsign.mobile.data.local.TokenManager
+import com.letsign.mobile.data.local.db.AppDatabase
+import com.letsign.mobile.data.local.db.DocumentDao
+import com.letsign.mobile.data.local.db.PdfFileDao
+import com.letsign.mobile.data.local.db.PdfFileEntity
+import com.letsign.mobile.data.local.db.SignerDao
+import com.letsign.mobile.data.local.db.mergeLocalOnly
+import com.letsign.mobile.data.local.db.toDomain
+import com.letsign.mobile.data.local.db.toEntity
+import com.letsign.mobile.data.local.db.toSignerEntity
+import com.letsign.mobile.data.pdf.PdfStorage
+import com.letsign.mobile.domain.model.ActionResult
 import com.letsign.mobile.domain.model.Document
-import com.letsign.mobile.domain.model.Participant
-import com.letsign.mobile.domain.model.SignatureField
+import com.letsign.mobile.domain.model.LocalPdf
+import com.letsign.mobile.domain.model.PdfKind
+import com.letsign.mobile.domain.model.SendDraft
+import com.letsign.mobile.domain.model.SendResult
 import com.letsign.mobile.domain.model.User
-import com.letsign.mobile.domain.model.AuthTokens
-import com.letsign.mobile.domain.model.AuditEvent
 import com.letsign.mobile.domain.repository.AuthRepository
 import com.letsign.mobile.domain.repository.DocumentRepository
-import com.letsign.mobile.domain.repository.ParticipantRepository
-import com.letsign.mobile.domain.repository.SignatureFieldRepository
 import com.letsign.mobile.domain.repository.SignerRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.tasks.await
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonObject
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
-import retrofit2.Response
 import java.io.File
-import java.util.UUID
+import javax.inject.Inject
+import javax.inject.Singleton
+
+/** Apaga tudo o que é local (banco + PDFs). Usado no logout e quando a sessão expira. */
+@Singleton
+class LocalDataCleaner @Inject constructor(
+    private val database: AppDatabase,
+    private val pdfStorage: PdfStorage
+) {
+    suspend fun clear() = withContext(Dispatchers.IO) {
+        database.clearAllTables()
+        pdfStorage.deleteAll()
+    }
+}
+
+/** Fluxo que segue o usuário logado: troca de sessão = troca de dados, sem misturar usuários. */
+@OptIn(ExperimentalCoroutinesApi::class)
+private fun <T> StateFlow<User?>.perUser(empty: T, block: (userId: String) -> Flow<T>): Flow<T> =
+    flatMapLatest { user -> if (user == null) flowOf(empty) else block(user.id) }
 
 class AuthRepositoryImpl(
-    private val api: ApiServices = ApiClient.authApi,
+    private val api: AuthApi,
     private val tokenManager: TokenManager,
+    private val cleaner: LocalDataCleaner,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : AuthRepository {
 
-    override suspend fun login(email: String, senha: String): Result<AuthTokens> = withContext(ioDispatcher) {
-        try {
-            val response = api.login(ApiServices.LoginRequest(email, senha))
-            if (response.isSuccessful) {
-                val tokens = response.body()!!
-                tokenManager.saveTokens(tokens.accessToken)
-                tokenManager.saveUserData(tokens.usuario.toJson())
-                Result.success(tokens)
-            } else {
-                Result.failure(Exception(response.errorBody()?.string() ?: "Erro no login"))
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
+    override val currentUser: StateFlow<User?> = tokenManager.currentUser
+
+    override val sessionExpired: Flow<Unit> = tokenManager.sessionExpired
+
+    override suspend fun login(email: String, senha: String): Result<User> =
+        apiCall(ioDispatcher, "Erro no login", { api.login(LoginRequest(email.trim(), senha)) }) { tokens ->
+            startSession(tokens.accessToken, tokens.usuario)
         }
+
+    override suspend fun register(nome: String, email: String, telefone: String?, senha: String): Result<User> =
+        apiCall(ioDispatcher, "Erro no cadastro", { api.register(RegisterRequest(nome.trim(), email.trim(), telefone, senha)) }) { tokens ->
+            startSession(tokens.accessToken, tokens.usuario)
+        }
+
+    /** Outro usuário pode ter usado o aparelho: começa sempre com o banco local vazio. */
+    private suspend fun startSession(token: String, user: User): User {
+        cleaner.clear()
+        tokenManager.saveSession(token, user)
+        return user
     }
 
-    override suspend fun register(nome: String, email: String, telefone: String?, senha: String): Result<AuthTokens> = withContext(ioDispatcher) {
-        try {
-            val response = api.register(ApiServices.RegisterRequest(nome, email, telefone, senha))
-            if (response.isSuccessful) {
-                val tokens = response.body()!!
-                tokenManager.saveTokens(tokens.accessToken)
-                tokenManager.saveUserData(tokens.usuario.toJson())
-                Result.success(tokens)
-            } else {
-                Result.failure(Exception(response.errorBody()?.string() ?: "Erro no cadastro"))
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    override suspend fun refreshToken(): Result<String> = withContext(ioDispatcher) {
-        try {
-            val response = api.refresh()
-            if (response.isSuccessful) {
-                val tokens = response.body()!!
-                tokenManager.saveTokens(tokens.accessToken)
-                Result.success(tokens.accessToken)
-            } else {
-                tokenManager.clearTokens()
-                Result.failure(Exception("Token expirado"))
-            }
-        } catch (e: Exception) {
-            tokenManager.clearTokens()
-            Result.failure(e)
-        }
-    }
-
-    override suspend fun getCurrentUser(): Result<User> = withContext(ioDispatcher) {
-        try {
-            val cached = tokenManager.getUserData()?.let { User.fromJson(it) }
-            if (cached != null) {
-                Result.success(cached)
-            } else {
-                val response = api.me()
-                if (response.isSuccessful) {
-                    val user = response.body()!!
-                    tokenManager.saveUserData(user.toJson())
-                    Result.success(user)
-                } else {
-                    Result.failure(Exception("Usuário não encontrado"))
-                }
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    override suspend fun logout(): Result<Unit> = withContext(ioDispatcher) {
+    override suspend fun logout() {
         tokenManager.clearTokens()
-        Result.success(Unit)
+        cleaner.clear()
     }
-
-    override fun getAccessToken(): String? = tokenManager.getAccessToken()
-
-    override fun isAuthenticated(): Boolean = tokenManager.isAuthenticated()
 }
 
 class DocumentRepositoryImpl(
-    private val api: ApiServices = ApiClient.documentsApi,
+    private val api: DocumentsApi,
+    private val documentDao: DocumentDao,
+    private val pdfFileDao: PdfFileDao,
+    private val tokenManager: TokenManager,
+    private val pdfStorage: PdfStorage,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : DocumentRepository {
 
-    private val _documentsFlow = MutableStateFlow<List<Document>>(emptyList())
-    override val documentsFlow: kotlinx.coroutines.flow.StateFlow<List<Document>> = _documentsFlow.asStateFlow()
+    override fun observeDocuments(): Flow<List<Document>> =
+        tokenManager.currentUser.perUser(emptyList()) { userId ->
+            documentDao.observeAll(userId).map { list -> list.map { it.toDomain() } }
+        }
 
-    override suspend fun createDocument(document: Document): Result<Document> = withContext(ioDispatcher) {
-        try {
-            val pdfFile = File(document.pdfBase64?.let { saveBase64ToFile(it, "doc_${UUID.randomUUID()}.pdf") } ?: "")
-            val pdfPart = MultipartBody.Part.createFormData(
-                "pdf",
-                document.nomeArquivo,
-                pdfFile.asRequestBody("application/pdf".toMediaTypeOrNull())
+    override fun observeDocument(id: String): Flow<Document?> =
+        tokenManager.currentUser.perUser(null) { userId ->
+            combine(
+                documentDao.observe(userId, id),
+                documentDao.observeParticipants(userId, id),
+                documentDao.observeFields(userId, id),
+                documentDao.observeEvents(userId, id)
+            ) { doc, participants, fields, events -> doc?.toDomain(participants, fields, events) }
+        }
+
+    override fun observeLocalPdfs(id: String): Flow<List<LocalPdf>> =
+        tokenManager.currentUser.perUser(emptyList()) { userId ->
+            pdfFileDao.observe(userId, id).map { files -> files.filter { File(it.caminho).exists() }.map { it.toDomain() } }
+        }
+
+    override suspend fun refreshDocuments(): Result<Unit> = withUser { userId ->
+        apiCall(ioDispatcher, "Erro ao listar documentos", { api.listDocuments() }) { docs ->
+            val entities = docs.map { doc -> doc.toEntity(userId).mergeLocalOnly(documentDao.get(userId, doc.id)) }
+            documentDao.replaceList(userId, entities)
+        }
+    }
+
+    override suspend fun refreshDocument(id: String): Result<Document> = withUser { userId ->
+        apiCall(ioDispatcher, "Documento não encontrado", { api.getDocument(id) }) { doc -> saveDetail(userId, doc) }
+    }
+
+    override suspend fun createDocument(titulo: String, pdf: File, nomeArquivo: String): Result<Document> = withUser { userId ->
+        val pdfPart = MultipartBody.Part.createFormData("pdf", nomeArquivo, pdf.asRequestBody("application/pdf".toMediaType()))
+        apiCall(ioDispatcher, "Erro ao criar documento", {
+            api.createDocument(pdfPart, titulo.trim().toRequestBody("text/plain".toMediaType()))
+        }) { doc ->
+            val saved = saveDetail(userId, doc)
+            // O PDF escolhido passa a ser o "original" registrado deste documento.
+            val file = pdfStorage.adoptImported(userId, doc.id, doc.versao, pdf)
+            registerFile(userId, saved, PdfKind.ORIGINAL, file, nomeArquivo)
+            saved
+        }
+    }
+
+    override suspend fun newVersion(id: String, pdf: File, nomeArquivo: String): Result<Document> = withUser { userId ->
+        val pdfPart = MultipartBody.Part.createFormData("pdf", nomeArquivo, pdf.asRequestBody("application/pdf".toMediaType()))
+        apiCall(ioDispatcher, "Erro ao enviar a nova versão", { api.newVersion(id, pdfPart) }) { doc ->
+            val saved = saveDetail(userId, doc)
+            // A versão anterior continua registrada no aparelho; o PDF novo vira o "original" da nova versão.
+            val file = pdfStorage.adoptImported(userId, doc.id, doc.versao, pdf)
+            registerFile(userId, saved, PdfKind.ORIGINAL, file, nomeArquivo)
+            saved
+        }
+    }
+
+    override suspend fun sendDocument(id: String, draft: SendDraft): Result<SendResult> = withUser { userId ->
+        val request = SendRequest(
+            mensagem = draft.mensagem?.trim()?.ifEmpty { null },
+            participantes = draft.participants.map { ParticipantRequest(it.signer.id, it.roleLabel.name, it.required) },
+            fields = draft.fields.map { f ->
+                val role = draft.participants.firstOrNull { it.signer.id == f.signerId }?.roleLabel
+                FieldRequest(f.signerId, f.page, f.x, f.y, f.width, f.height, required = true, roleLabel = role?.name)
+            }
+        )
+        apiCall(ioDispatcher, "Erro ao enviar documento", { api.sendDocument(id, request) }) { resp ->
+            SendResult(resp.jaEnviado, resp.mensagem, saveDetail(userId, resp.documento))
+        }
+    }
+
+    override suspend fun signDocument(id: String, signaturePngBase64: String, gestureMetadata: JsonObject?): Result<ActionResult> =
+        withUser { userId ->
+            apiCall(ioDispatcher, "Erro ao assinar documento", {
+                api.signDocument(id, SignRequest(signaturePngBase64, gestureMetadata))
+            }) { resp -> ActionResult(resp.mensagem, saveDetail(userId, resp.documento)) }
+        }
+
+    override suspend fun rejectDocument(id: String, motivo: String): Result<ActionResult> = withUser { userId ->
+        apiCall(ioDispatcher, "Erro ao recusar documento", { api.rejectDocument(id, RejectRequest(motivo.trim())) }) { resp ->
+            ActionResult(resp.mensagem, saveDetail(userId, resp.documento))
+        }
+    }
+
+    override suspend fun getPdf(id: String, kind: PdfKind): Result<File> = withUser { userId ->
+        val doc = withContext(ioDispatcher) { documentDao.get(userId, id) }?.toDomain()
+            ?: refreshDocument(id).getOrElse { return@withUser Result.failure(it) }
+        val cached = withContext(ioDispatcher) { pdfFileDao.get(userId, id, kind.apiValue, doc.versao) }
+        if (cached != null && File(cached.caminho).exists()) return@withUser Result.success(File(cached.caminho))
+
+        apiCall(ioDispatcher, "Erro ao baixar o PDF", { api.downloadPdf(id, kind.apiValue) }) { body ->
+            val file = pdfStorage.save(userId, id, kind.apiValue, doc.versao, body.bytes())
+            val name = if (kind == PdfKind.FINAL) doc.nomeArquivo.removeSuffix(".pdf") + "-assinado.pdf" else doc.nomeArquivo
+            registerFile(userId, doc, kind, file, name)
+            file
+        }
+    }
+
+    private suspend fun saveDetail(userId: String, doc: Document): Document {
+        val existing = documentDao.get(userId, doc.id)
+        // O detalhe não traz minhaSituacao/meuPapel: deriva do participante que é o próprio usuário.
+        val me = doc.signers.firstOrNull { it.signerId == userId }
+        val merged = doc.copy(
+            minhaSituacao = doc.minhaSituacao ?: me?.status,
+            meuPapel = doc.meuPapel ?: me?.roleLabel,
+            assinadoEm = doc.assinadoEm ?: me?.signedAt
+        )
+        documentDao.replaceDetail(
+            userId = userId,
+            document = merged.toEntity(userId).mergeLocalOnly(existing),
+            participants = merged.signers.map { it.toEntity(userId, doc.id) },
+            fields = merged.fields.map { it.toEntity(userId, doc.id) },
+            events = merged.events.map { it.toEntity(userId, doc.id) }
+        )
+        return merged
+    }
+
+    private suspend fun registerFile(userId: String, doc: Document, kind: PdfKind, file: File, name: String) {
+        pdfFileDao.upsert(
+            PdfFileEntity(
+                userId = userId,
+                documentId = doc.id,
+                tipo = kind.apiValue,
+                versao = doc.versao,
+                nomeArquivo = name,
+                caminho = file.absolutePath,
+                tamanhoBytes = file.length(),
+                salvoEm = System.currentTimeMillis(),
+                statusDocumento = doc.status.name
             )
-            val tituloPart = document.titulo.toRequestBody("text/plain".toMediaTypeOrNull())
-
-            val response = api.createDocument(pdfPart, tituloPart)
-            if (response.isSuccessful) {
-                Result.success(response.body()!!)
-            } else {
-                Result.failure(Exception(response.errorBody()?.string() ?: "Erro ao criar documento"))
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+        )
     }
 
-    override suspend fun getDocument(id: String): Result<Document> = withContext(ioDispatcher) {
-        try {
-            val response = api.getDocument(id)
-            if (response.isSuccessful) {
-                Result.success(response.body()!!)
-            } else {
-                Result.failure(Exception(response.errorBody()?.string() ?: "Documento não encontrado"))
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    override suspend fun listDocuments(ownerId: String, status: String?): Result<List<Document>> = withContext(ioDispatcher) {
-        try {
-            val response = api.listDocuments(status, null)
-            if (response.isSuccessful) {
-                Result.success(response.body()!!)
-            } else {
-                Result.failure(Exception(response.errorBody()?.string() ?: "Erro ao listar documentos"))
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    override suspend fun listDocumentsForSigner(signerId: String, situacao: String?): Result<List<Document>> = withContext(ioDispatcher) {
-        try {
-            val response = api.listDocuments(null, situacao)
-            if (response.isSuccessful) {
-                Result.success(response.body()!!)
-            } else {
-                Result.failure(Exception(response.errorBody()?.string() ?: "Erro ao listar documentos"))
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    override suspend fun updateDocument(document: Document): Result<Document> = withContext(ioDispatcher) {
-        // Not directly available in API, would need specific endpoints
-        Result.failure(UnsupportedOperationException("Use specific endpoints for updates"))
-    }
-
-    override suspend fun deleteDocument(id: String): Result<Unit> = withContext(ioDispatcher) {
-        // Not available in current API
-        Result.failure(UnsupportedOperationException("Delete not implemented in API"))
-    }
-
-    override suspend fun sendDocument(id: String): Result<Document> = withContext(ioDispatcher) {
-        try {
-            val response = api.sendDocument(id, ApiServices.SendRequest())
-            if (response.isSuccessful) {
-                Result.success(response.body()!!.documento)
-            } else {
-                Result.failure(Exception(response.errorBody()?.string() ?: "Erro ao enviar documento"))
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    override suspend fun signDocument(id: String, signatureBase64: String, gestureMetadata: String): Result<Document> = withContext(ioDispatcher) {
-        try {
-            val response = api.signDocument(id, ApiServices.SignRequest(signatureBase64, gestureMetadata))
-            if (response.isSuccessful) {
-                Result.success(response.body()!!)
-            } else {
-                Result.failure(Exception(response.errorBody()?.string() ?: "Erro ao assinar documento"))
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    override suspend fun rejectDocument(id: String, motivo: String): Result<Document> = withContext(ioDispatcher) {
-        try {
-            val response = api.rejectDocument(id, ApiServices.RejectRequest(motivo))
-            if (response.isSuccessful) {
-                Result.success(response.body()!!)
-            } else {
-                Result.failure(Exception(response.errorBody()?.string() ?: "Erro ao recusar documento"))
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    override suspend fun newVersion(id: String, pdfBase64: String, titulo: String?): Result<Document> = withContext(ioDispatcher) {
-        try {
-            val pdfFile = File(saveBase64ToFile(pdfBase64, "doc_${UUID.randomUUID()}.pdf"))
-            val pdfPart = MultipartBody.Part.createFormData(
-                "pdf",
-                "documento_versao_${System.currentTimeMillis()}.pdf",
-                pdfFile.asRequestBody("application/pdf".toMediaTypeOrNull())
-            )
-            val tituloPart = (titulo ?: "").toRequestBody("text/plain".toMediaTypeOrNull())
-
-            val response = api.newVersion(id, pdfPart, tituloPart)
-            if (response.isSuccessful) {
-                Result.success(response.body()!!)
-            } else {
-                Result.failure(Exception(response.errorBody()?.string() ?: "Erro ao criar nova versão"))
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    override suspend fun downloadPdf(id: String, tipo: String): Result<ByteArray> = withContext(ioDispatcher) {
-        try {
-            val response = api.downloadPdf(id, tipo)
-            if (response.isSuccessful) {
-                Result.success(response.body()!!.bytes())
-            } else {
-                Result.failure(Exception(response.errorBody()?.string() ?: "Erro ao baixar PDF"))
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    override fun observeDocument(id: String): kotlinx.coroutines.flow.Flow<Document> {
-        // Would need WebSocket or polling for real-time updates
-        return kotlinx.coroutines.flow.flowOf()
-    }
-
-    override fun observeDocuments(ownerId: String): kotlinx.coroutines.flow.Flow<List<Document>> {
-        return _documentsFlow
-    }
-
-    companion object {
-        fun saveBase64ToFile(base64: String, fileName: String): String {
-            val bytes = android.util.Base64.decode(base64, android.util.Base64.DEFAULT)
-            val file = File(android.os.Environment.getExternalStorageDirectory(), fileName)
-            file.writeBytes(bytes)
-            return file.absolutePath
-        }
-    }
-}
-
-class ParticipantRepositoryImpl(
-    private val api: ApiServices = ApiClient.documentsApi,
-    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
-) : ParticipantRepository {
-    override suspend fun addParticipants(documentId: String, participants: List<Participant>): Result<List<Participant>> = withContext(ioDispatcher) {
-        try {
-            val request = ApiServices.ParticipantsRequest(
-                participants.map { ApiServices.ParticipantRequest(it.signerId, it.roleLabel.name, it.required) }
-            )
-            val response = api.setParticipants(documentId, request)
-            if (response.isSuccessful) {
-                Result.success(participants)
-            } else {
-                Result.failure(Exception(response.errorBody()?.string() ?: "Erro ao adicionar participantes"))
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    override suspend fun getParticipants(documentId: String): Result<List<Participant>> = withContext(ioDispatcher) {
-        try {
-            val response = api.getDocument(documentId)
-            if (response.isSuccessful) {
-                Result.success(response.body()?.signers ?: emptyList())
-            } else {
-                Result.failure(Exception(response.errorBody()?.string() ?: "Erro ao buscar participantes"))
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    override suspend fun updateParticipant(participant: Participant): Result<Participant> = withContext(ioDispatcher) {
-        // Update would be through document update
-        Result.success(participant)
-    }
-
-    override suspend fun updateParticipantStatus(id: String, status: com.letsign.mobile.domain.model.SignerStatus): Result<Unit> = withContext(ioDispatcher) {
-        // Status updated through sign/reject endpoints
-        Result.success(Unit)
-    }
-}
-
-class SignatureFieldRepositoryImpl(
-    private val api: ApiServices = ApiClient.documentsApi,
-    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
-) : SignatureFieldRepository {
-    override suspend fun addFields(fields: List<SignatureField>): Result<List<SignatureField>> = withContext(ioDispatcher) {
-        try {
-            val request = ApiServices.FieldsRequest(
-                fields.map { ApiServices.FieldRequest(
-                    it.signerId,
-                    it.page,
-                    it.x,
-                    it.y,
-                    it.width,
-                    it.height,
-                    it.required,
-                    it.roleLabel.name
-                ) }
-            )
-            val response = api.setFields(fields.first().documentId, request)
-            if (response.isSuccessful) {
-                Result.success(fields)
-            } else {
-                Result.failure(Exception(response.errorBody()?.string() ?: "Erro ao adicionar campos"))
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    override suspend fun getFields(documentId: String): Result<List<SignatureField>> = withContext(ioDispatcher) {
-        try {
-            val response = api.getDocument(documentId)
-            if (response.isSuccessful) {
-                Result.success(response.body()?.fields ?: emptyList())
-            } else {
-                Result.failure(Exception(response.errorBody()?.string() ?: "Erro ao buscar campos"))
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    override suspend fun updateField(field: SignatureField): Result<SignatureField> = withContext(ioDispatcher) {
-        Result.success(field)
-    }
-
-    override suspend fun deleteFields(documentId: String): Result<Unit> = withContext(ioDispatcher) {
-        Result.success(Unit)
-    }
+    private inline fun <T> withUser(block: (String) -> Result<T>): Result<T> =
+        tokenManager.currentUserId()?.let(block) ?: Result.failure(NotLoggedInException())
 }
 
 class SignerRepositoryImpl(
-    private val api: ApiServices = ApiClient.signersApi,
+    private val api: SignersApi,
+    private val signerDao: SignerDao,
+    private val tokenManager: TokenManager,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : SignerRepository {
-    override suspend fun listSigners(adminId: String, busca: String?): Result<List<User>> = withContext(ioDispatcher) {
-        try {
-            val response = api.listSigners(busca)
-            if (response.isSuccessful) {
-                Result.success(response.body()!!)
-            } else {
-                Result.failure(Exception(response.errorBody()?.string() ?: "Erro ao listar signatários"))
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
+
+    override fun observeSigners(): Flow<List<User>> =
+        tokenManager.currentUser.perUser(emptyList()) { userId ->
+            signerDao.observeAll(userId).map { list -> list.map { it.toDomain() } }
+        }
+
+    override suspend fun refreshSigners(): Result<Unit> = withUser { userId ->
+        apiCall(ioDispatcher, "Erro ao listar signatários", { api.listSigners() }) { list ->
+            signerDao.replaceAll(userId, list.map { it.toSignerEntity(userId) })
         }
     }
 
-    override suspend fun getSigner(id: String): Result<User> = withContext(ioDispatcher) {
-        try {
-            val response = api.getSigner(id)
-            if (response.isSuccessful) {
-                Result.success(response.body()!!)
-            } else {
-                Result.failure(Exception(response.errorBody()?.string() ?: "Signatário não encontrado"))
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+    override suspend fun createSigner(nome: String, email: String, telefone: String, senha: String): Result<User> = withUser { userId ->
+        apiCall(ioDispatcher, "Erro ao cadastrar signatário", {
+            api.createSigner(SignerRequest(nome.trim(), email.trim(), telefone.trim(), senha))
+        }) { created -> created.also { signerDao.upsert(listOf(it.toSignerEntity(userId))) } }
     }
 
-    override suspend fun createSigner(signer: User): Result<User> = withContext(ioDispatcher) {
-        try {
-            val request = ApiServices.SignerRequest(signer.nome, signer.email, signer.telefone, "temp_password")
-            val response = api.createSigner(request)
-            if (response.isSuccessful) {
-                Result.success(response.body()!!)
-            } else {
-                Result.failure(Exception(response.errorBody()?.string() ?: "Erro ao criar signatário"))
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
+    // senha = null: o PATCH não altera a senha do signatário.
+    override suspend fun updateSigner(id: String, nome: String, email: String, telefone: String, senha: String?): Result<User> =
+        withUser { userId ->
+            apiCall(ioDispatcher, "Erro ao atualizar signatário", {
+                api.updateSigner(id, SignerRequest(nome.trim(), email.trim(), telefone.trim(), senha?.ifEmpty { null }))
+            }) { updated -> updated.also { signerDao.upsert(listOf(it.toSignerEntity(userId))) } }
         }
+
+    override suspend fun deleteSigner(id: String): Result<Unit> = withUser { userId ->
+        apiCall(ioDispatcher, "Erro ao excluir signatário", { api.deleteSigner(id) }) { signerDao.delete(userId, id) }
     }
 
-    override suspend fun updateSigner(signer: User): Result<User> = withContext(ioDispatcher) {
-        try {
-            val request = ApiServices.SignerRequest(signer.nome, signer.email, signer.telefone, "unchanged")
-            val response = api.updateSigner(signer.id, request)
-            if (response.isSuccessful) {
-                Result.success(response.body()!!)
-            } else {
-                Result.failure(Exception(response.errorBody()?.string() ?: "Erro ao atualizar signatário"))
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    override suspend fun deleteSigner(id: String): Result<Unit> = withContext(ioDispatcher) {
-        try {
-            val response = api.deleteSigner(id)
-            if (response.isSuccessful) {
-                Result.success(Unit)
-            } else {
-                Result.failure(Exception(response.errorBody()?.string() ?: "Erro ao excluir signatário"))
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
+    private inline fun <T> withUser(block: (String) -> Result<T>): Result<T> =
+        tokenManager.currentUserId()?.let(block) ?: Result.failure(NotLoggedInException())
 }
-
-// Extension for JSON conversion
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.encodeToString
-
-fun <T> T.toJson(): String = Json.encodeToString(this)
-fun String.fromJson(): T = Json.decodeFromString(this)

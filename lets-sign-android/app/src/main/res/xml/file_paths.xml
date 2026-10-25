@@ -1,9 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <external-files-path name="documents" path="Documents/" />
-    <external-files-path name="cache" path="cache/" />
-    <external-files-path name="downloads" path="Download/" />
-    <cache-path name="cache" path="." />
-    <external-cache-path name="external_cache" path="." />
-    <files-path name="files" path="." />
+<!-- Só as pastas de PDFs podem ser compartilhadas (ver PdfStorage). -->
+<paths>
+    <files-path name="documentos" path="documentos/" />
+    <cache-path name="compartilhar" path="compartilhar/" />
 </paths>
