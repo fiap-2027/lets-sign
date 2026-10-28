@@ -77,6 +77,9 @@ instale no celular e me diga o passo a passo para testar o fluxo completo (admin
 
 **O que é:** transformar a pasta em repositório Git e enviar para o GitHub.
 
+> **Pelo navegador (25/10/2026):** a pasta `Área de Trabalho\LetsSign-para-GitHub` tem só os 226 arquivos certos, divididos em 4 envios de até 100, com o passo a passo no `LEIA-ME.txt`.
+> A página de upload do GitHub não respeita o `.gitignore`. Arrastar as pastas originais envia `node_modules`, `build` e o `.env` com senhas, e esbarra no limite de 100 arquivos e 25 MB.
+
 **Antes da sessão:**
 1. Tenha uma conta no [github.com](https://github.com).
 2. Decida se o repositório será **público** (qualquer um vê) ou **privado** (só quem você convidar).
