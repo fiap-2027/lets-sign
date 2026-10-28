@@ -27,6 +27,28 @@ interface DocumentDao {
     @Query("SELECT * FROM audit_events WHERE userId = :userId AND documentId = :documentId ORDER BY timestamp")
     fun observeEvents(userId: String, documentId: String): Flow<List<AuditEventEntity>>
 
+    // ---- Modo local ----
+
+    /** Documentos que [viewerId] pode ver: os que criou e os que foram enviados para ele (rascunho nunca). */
+    @Query(
+        """SELECT * FROM documents WHERE userId = :userId AND (ownerId = :viewerId OR (status != 'DRAFT' AND id IN
+           (SELECT documentId FROM participants WHERE userId = :userId AND signerId = :viewerId)))
+           ORDER BY COALESCE(atualizadoEm, criadoEm) DESC"""
+    )
+    fun observeVisible(userId: String, viewerId: String): Flow<List<DocumentEntity>>
+
+    @Query("SELECT * FROM participants WHERE userId = :userId AND signerId = :signerId")
+    fun observeParticipations(userId: String, signerId: String): Flow<List<ParticipantEntity>>
+
+    @Query("SELECT * FROM participants WHERE userId = :userId AND documentId = :documentId ORDER BY ordem")
+    suspend fun getParticipants(userId: String, documentId: String): List<ParticipantEntity>
+
+    @Query("SELECT * FROM signature_fields WHERE userId = :userId AND documentId = :documentId ORDER BY page, y")
+    suspend fun getFields(userId: String, documentId: String): List<FieldEntity>
+
+    @Query("SELECT COUNT(*) FROM participants WHERE userId = :userId AND signerId = :signerId")
+    suspend fun countParticipations(userId: String, signerId: String): Int
+
     @Upsert
     suspend fun upsertDocuments(documents: List<DocumentEntity>)
 
@@ -131,4 +153,24 @@ interface PdfFileDao {
 
     @Query("DELETE FROM pdf_files WHERE userId = :userId AND documentId = :documentId AND tipo = :tipo AND versao = :versao")
     suspend fun delete(userId: String, documentId: String, tipo: String, versao: Int)
+}
+
+/** Modo local: contas (Admin e Signatários). */
+@Dao
+interface UserDao {
+
+    @Query("SELECT * FROM users WHERE email = :email")
+    suspend fun findByEmail(email: String): UserEntity?
+
+    @Query("SELECT * FROM users WHERE id = :id")
+    suspend fun get(id: String): UserEntity?
+
+    @Query("SELECT * FROM users WHERE adminId = :adminId ORDER BY nome COLLATE NOCASE")
+    fun observeSignersOf(adminId: String): Flow<List<UserEntity>>
+
+    @Upsert
+    suspend fun upsert(user: UserEntity)
+
+    @Query("DELETE FROM users WHERE id = :id")
+    suspend fun delete(id: String)
 }

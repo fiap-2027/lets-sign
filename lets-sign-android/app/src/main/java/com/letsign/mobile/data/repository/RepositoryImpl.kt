@@ -65,7 +65,7 @@ class LocalDataCleaner @Inject constructor(
 
 /** Fluxo que segue o usuário logado: troca de sessão = troca de dados, sem misturar usuários. */
 @OptIn(ExperimentalCoroutinesApi::class)
-private fun <T> StateFlow<User?>.perUser(empty: T, block: (userId: String) -> Flow<T>): Flow<T> =
+internal fun <T> StateFlow<User?>.perUser(empty: T, block: (userId: String) -> Flow<T>): Flow<T> =
     flatMapLatest { user -> if (user == null) flowOf(empty) else block(user.id) }
 
 class AuthRepositoryImpl(

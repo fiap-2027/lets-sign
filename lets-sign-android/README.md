@@ -39,7 +39,7 @@ Desafio FIAP × LetsSign, Sprint 1 · Kotlin · Jetpack Compose · Room · Hilt
   </tr>
 </table>
 
-### No emulador, com o backend real
+### No emulador, com o backend real (modo API, 25/10)
 
 <table>
   <tr>
@@ -83,38 +83,47 @@ O que ainda pode evoluir está em **[MELHORIAS.md](MELHORIAS.md)**, com o placar
 
 ## 🚀 Como rodar
 
-### Pré-requisitos
-
-- **Android Studio** recente (AGP 9.4, Gradle 9.8) com o **Android SDK 37**
-- **Backend LetsSign** na porta 3000 (`letssign_backend/nodejs_space`, veja o README da raiz do repositório)
+O app funciona **sozinho, sem servidor**: contas, signatários, documentos, assinaturas e PDFs ficam no aparelho (Room + arquivos). É só instalar e usar.
 
 ### Passo a passo
 
-1. Suba o backend (`npm run start:dev`).
-2. No Android Studio: **File → Open** → pasta **`lets-sign-android`** → aguarde o *Gradle sync*.
-3. Escolha um emulador e clique em **▶ Run**.
-4. Crie uma conta (vira **Admin**), cadastre signatários e envie um PDF. Para assinar, entre com o e-mail e a senha de um signatário.
+1. No Android Studio (AGP 9.4, Gradle 9.8, **Android SDK 37**): **File → Open** → pasta **`lets-sign-android`** → aguarde o *Gradle sync*.
+2. Escolha um emulador ou celular e clique em **▶ Run**.
+3. **Cadastre-se**: a conta criada é de **Admin**.
+4. Em **Signatários**, cadastre quem vai assinar (nome, e-mail, telefone e senha).
+5. Toque em **Novo documento**, escolha o PDF, os signatários e posicione os campos. Revise e envie.
+6. **Saia** e entre com o e-mail e a senha de um signatário: o documento aparece em **Pendentes**. Assine.
+7. Quando todos os obrigatórios assinarem, o **PDF final assinado** fica salvo no aparelho e aparece no detalhe do documento.
 
-> **Celular físico:** gere o APK apontando para o IP do computador na rede, sem editar código:
-> `./gradlew assembleDebug -PapiUrl=http://192.168.0.10:3000/` (troque pelo seu IP; no Windows, veja com `ipconfig`).
-> Celular e computador precisam estar no mesmo Wi-Fi, e o backend precisa estar rodando.
+> Sem servidor, o "convite" não chega por e-mail: o signatário vê o documento ao entrar no app no mesmo aparelho.
+
+### Modo API (opcional)
+
+Os repositórios seguem interfaces (`domain/repository`), então o mesmo app também fala com o backend REST (`letssign_backend/nodejs_space`, porta 3000), usando o Room como cache:
+
+```bash
+./gradlew assembleDebug -Pmodo=api                                        # emulador (10.0.2.2:3000)
+./gradlew assembleDebug -Pmodo=api -PapiUrl=http://192.168.0.10:3000/     # celular no mesmo Wi-Fi
+```
 
 ### Linha de comando
 
 ```bash
-./gradlew assembleDebug        # APK em app/build/outputs/apk/debug/
-./gradlew installDebug         # instala no aparelho conectado
-./gradlew testDebugUnitTest    # 28 testes unitários
+./gradlew assembleDebug               # APK em app/build/outputs/apk/debug/
+./gradlew installDebug                # instala no aparelho conectado
+./gradlew testDebugUnitTest           # 28 testes unitários
+./gradlew connectedDebugAndroidTest   # 3 testes no emulador: fluxo completo sem servidor e migração do banco
 ```
 
 ## 🏗️ Arquitetura
 
 ```
-Telas (Compose) → ViewModels (StateFlow) → Interfaces de repositório → Room + arquivos  ⇄  API REST
+Telas (Compose) → ViewModels (StateFlow) → Interfaces de repositório ─┬─ Local*Repository → Room + arquivos   (padrão)
+                                                                        └─ *RepositoryImpl  → API REST + Room (cache)   (-Pmodo=api)
 ```
 
-- **Offline-first:** as telas leem do Room; a API sincroniza o banco.
-- **Repositórios por interface:** dá para trocar a fonte de dados (só local, só REST ou as duas) sem tocar nas telas.
+- **Banco local como fonte da verdade** (`data/local/LocalRepositories.kt`): o próprio app aplica as regras (acesso por usuário, envio sem duplicar, conclusão só com todos os obrigatórios, nova versão preservando a anterior).
+- **Repositórios por interface:** a troca entre local e REST é feita só na injeção de dependência (`di/RepositoryModule.kt`), sem tocar nas telas.
 - **Regras de negócio** em funções puras e testadas (`domain/rules/DocumentRules.kt`).
 - Cada tela tem `XxxScreen` (com ViewModel) e `XxxContent` (sem estado), o que permite **ver todas as telas no Preview do Android Studio** sem rodar o app nem o backend.
 
@@ -125,7 +134,7 @@ Rotas, tabelas, fluxos, regras e endpoints: **[docs/DOCUMENTACAO.md](docs/DOCUME
 | Área | Biblioteca |
 |---|---|
 | Interface | Jetpack Compose, Material 3, Navigation Compose |
-| PDF | `PdfRenderer` nativo do Android (sem biblioteca externa) |
+| PDF | `PdfRenderer` nativo para exibir; **PDFBox-Android** para gerar o PDF final com as assinaturas |
 | Banco local | Room 2.8 (esquema versionado em `app/schemas`) |
 | Injeção de dependência | Hilt (KSP) |
 | Rede | Retrofit 3, OkHttp, kotlinx-serialization |
@@ -133,11 +142,12 @@ Rotas, tabelas, fluxos, regras e endpoints: **[docs/DOCUMENTACAO.md](docs/DOCUME
 
 ## 🔐 Segurança
 
-- JWT enviado em todas as requisições. Um **401 encerra a sessão** e apaga os dados locais.
-- O token fica fora dos backups do Android.
+- Senhas guardadas só como hash **PBKDF2 com sal** (nunca em texto).
+- Cada usuário só vê os próprios documentos e os que foram **enviados** para ele; rascunhos não aparecem para signatários.
+- Modo API: JWT em todas as requisições, e um **401 encerra a sessão** e apaga os dados locais. O token fica fora dos backups do Android.
 - HTTP sem TLS é liberado só no build debug; o release exige HTTPS.
 - Os PDFs ficam no armazenamento privado do app e são compartilhados via `FileProvider`.
-- Cada assinatura vai com metadados do gesto (traços, pontos, duração, aparelho). O backend grava o hash SHA-256.
+- Cada assinatura vai com metadados do gesto (traços, pontos, duração, aparelho). O PDF original e o final têm hash SHA-256 registrado no histórico.
 
 ## 📄 Licença
 

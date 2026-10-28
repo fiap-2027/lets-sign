@@ -98,8 +98,8 @@ data class DocumentDetailUiState(
     val workingMessage: String = "Registrando...",
     val error: String? = null,
     val message: String? = null,
-    /** Nova versão criada: a tela abre o assistente para revisar signatários e campos e reenviar. */
-    val newVersionReady: Boolean = false
+    /** Id da nova versão criada: a tela abre o assistente nela para revisar signatários e campos e reenviar. */
+    val newVersionId: String? = null
 )
 
 @HiltViewModel
@@ -151,12 +151,12 @@ class DocumentDetailViewModel @Inject constructor(
                 return@launch
             }
             documentRepository.newVersion(documentId, File(picked.path), picked.displayName)
-                .onSuccess { local.update { it.copy(isWorking = false, newVersionReady = true) } }
+                .onSuccess { doc -> local.update { it.copy(isWorking = false, newVersionId = doc.id) } }
                 .onFailure { e -> local.update { it.copy(isWorking = false, error = e.message) } }
         }
     }
 
-    fun consumeNewVersion() = local.update { it.copy(newVersionReady = false) }
+    fun consumeNewVersion() = local.update { it.copy(newVersionId = null) }
 
     fun reject(motivo: String) {
         if (motivo.isBlank()) {
@@ -181,7 +181,7 @@ data class SignDocumentUiState(
     val isLoading: Boolean = true,
     val isSigning: Boolean = false,
     val error: String? = null,
-    /** Mensagem do servidor após assinar com sucesso. */
+    /** Mensagem do repositório após assinar com sucesso. */
     val signedMessage: String? = null
 )
 

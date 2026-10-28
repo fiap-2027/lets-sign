@@ -178,6 +178,9 @@ fun AuditEventEntity.toDomain() = AuditEvent(
     hashDocumentoNoMomento = hashDocumentoNoMomento
 )
 
+fun UserEntity.toDomain() =
+    User(id = id, nome = nome, email = email, telefone = telefone, role = enumOr(role, Role.SIGNER), adminId = adminId, criadoEm = criadoEm)
+
 fun SignerEntity.toDomain() = User(id = id, nome = nome, email = email, telefone = telefone, role = Role.SIGNER, criadoEm = criadoEm)
 
 fun PdfFileEntity.toDomain() = LocalPdf(

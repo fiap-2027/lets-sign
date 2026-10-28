@@ -112,10 +112,11 @@ fun DocumentDetailScreen(
         uri?.let(viewModel::newVersion)
     }
     // Nova versão enviada: abre o assistente com signatários e campos mantidos para revisar e reenviar.
-    LaunchedEffect(state.newVersionReady) {
-        if (state.newVersionReady) {
+    LaunchedEffect(state.newVersionId) {
+        state.newVersionId?.let { newId ->
             viewModel.consumeNewVersion()
-            onContinueDraft(viewModel.documentId)
+            // No modo local a nova versão é outro documento; no modo API o id é o mesmo.
+            onContinueDraft(newId)
         }
     }
     DocumentDetailContent(

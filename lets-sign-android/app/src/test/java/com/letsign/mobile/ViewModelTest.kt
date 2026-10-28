@@ -196,11 +196,13 @@ class ViewModelTest {
     @Test
     fun `nova versao valida o PDF, envia e abre o assistente`() = runTest {
         val vm = detailVm()
+        // Abre o assistente no id devolvido (no modo local a nova versão é outro documento).
+        docs.newVersionResult = Result.success(Document(id = "d2", ownerId = "admin", titulo = "Contrato", versao = 2))
         vm.newVersion(Mockito.mock(Uri::class.java))
         assertEquals(1, docs.newVersionCalls)
-        assertTrue(vm.uiState.value.newVersionReady)
+        assertEquals("d2", vm.uiState.value.newVersionId)
         vm.consumeNewVersion()
-        assertEquals(false, vm.uiState.value.newVersionReady)
+        assertNull(vm.uiState.value.newVersionId)
     }
 
     @Test
@@ -209,7 +211,7 @@ class ViewModelTest {
         vm.newVersion(Mockito.mock(Uri::class.java))
         assertEquals(0, docs.newVersionCalls)
         assertEquals("O PDF está protegido por senha e não pode ser processado.", vm.uiState.value.error)
-        assertEquals(false, vm.uiState.value.newVersionReady)
+        assertNull(vm.uiState.value.newVersionId)
     }
 
     @Test

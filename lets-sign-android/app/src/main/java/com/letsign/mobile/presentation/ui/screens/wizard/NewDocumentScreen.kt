@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -74,8 +75,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.letsign.mobile.BuildConfig
 import com.letsign.mobile.data.pdf.PdfDocumentRenderer
 import com.letsign.mobile.domain.model.DraftField
 import com.letsign.mobile.domain.model.DraftParticipant
@@ -585,12 +589,18 @@ private fun EditablePage(
 
 @Composable
 private fun ReviewStep(state: WizardUiState, renderer: PdfDocumentRenderer?, actions: WizardActions) {
+    var showFullPdf by rememberSaveable { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         SectionCard(title = "Documento", trailing = { TextButton(onClick = { actions.onGoTo(WizardStep.DADOS) }) { Text("Editar") } }) {
             Text(state.titulo, style = MaterialTheme.typography.titleMedium)
             state.pdf?.let {
                 Text("${it.displayName} • ${it.info.pageCount} página(s) • ${formatBytes(it.sizeBytes)}", style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            OutlinedButton(onClick = { showFullPdf = true }, enabled = state.pdf != null, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                Icon(Icons.Default.PictureAsPdf, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Ver PDF completo")
             }
         }
 
@@ -639,11 +649,14 @@ private fun ReviewStep(state: WizardUiState, renderer: PdfDocumentRenderer?, act
             modifier = Modifier.fillMaxWidth()
         )
         Text(
-            "Ao enviar, cada signatário recebe um convite por e-mail. Depois do envio, alterações exigem uma nova versão do documento.",
+            (if (BuildConfig.USE_API) "Ao enviar, cada signatário recebe um convite por e-mail. "
+            else "Ao enviar, cada signatário encontra o convite ao entrar no app. ") +
+                "Depois do envio, alterações exigem uma nova versão do documento.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
+    if (showFullPdf) FullPdfDialog(state, renderer, onClose = { showFullPdf = false })
 }
 
 @Composable
@@ -662,6 +675,35 @@ private fun SuccessStep(outcome: SendOutcome.Success, actions: WizardActions) {
         Button(onClick = { actions.onOpenDocument(outcome.documentId) }, modifier = Modifier.fillMaxWidth()) { Text("Acompanhar documento") }
         Spacer(Modifier.height(8.dp))
         OutlinedButton(onClick = actions.onClose, modifier = Modifier.fillMaxWidth()) { Text("Voltar ao início") }
+    }
+}
+
+/** Requisito 5: o documento final antes do envio, com todas as páginas e os campos já posicionados. */
+@Composable
+private fun FullPdfDialog(state: WizardUiState, renderer: PdfDocumentRenderer?, onClose: () -> Unit) {
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Scaffold(
+            topBar = { LetsSignTopAppBar(title = "Documento final", subtitle = state.titulo, showBackButton = true, onBackClick = onClose) }
+        ) { padding ->
+            LazyColumn(
+                Modifier.fillMaxSize().padding(padding),
+                contentPadding = PaddingValues(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(state.pageCount) { index ->
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        PdfPageView(renderer, index, state.pdf?.info?.pageAspectRatios?.getOrNull(index) ?: 0.707f) { w, h ->
+                            state.fieldsOnPage(index + 1).forEach { f ->
+                                val i = state.participantIndex(f.signerId)
+                                val nome = state.participants.getOrNull(i)?.signer?.nome?.substringBefore(' ') ?: "?"
+                                FieldBox(f.x, f.y, f.width, f.height, w, h, signerColor(i), label = nome)
+                            }
+                        }
+                        Text("Página ${index + 1} de ${state.pageCount}", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 4.dp))
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -722,3 +764,7 @@ fun WizardSendFailedPreview() = LetsSignTheme {
 fun WizardSuccessPreview() = LetsSignTheme {
     NewDocumentContent(previewBase.copy(outcome = SendOutcome.Success("d-1", "Documento enviado com sucesso.", false)), WizardActions())
 }
+
+@ScreenPreviews
+@Composable
+fun WizardFullPdfPreview() = LetsSignTheme { FullPdfDialog(previewBase, renderer = null, onClose = {}) }

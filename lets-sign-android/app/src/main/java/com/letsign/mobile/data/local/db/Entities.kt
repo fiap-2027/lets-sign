@@ -2,9 +2,11 @@ package com.letsign.mobile.data.local.db
 
 import androidx.room.Entity
 import androidx.room.Index
+import androidx.room.PrimaryKey
 
-// Toda tabela tem `userId` (dono do cache) na chave primária: um usuário nunca enxerga
-// registros de outro no mesmo aparelho, e o logout apaga tudo (LocalDataCleaner).
+// Toda tabela tem `userId` na chave primária.
+// Modo API: é o dono do cache; um usuário nunca enxerga registros de outro e o logout apaga tudo (LocalDataCleaner).
+// Modo local: vale sempre LOCAL e o acesso é filtrado por usuário em LocalRepositories.kt.
 
 @Entity(tableName = "documents", primaryKeys = ["userId", "id"])
 data class DocumentEntity(
@@ -56,7 +58,11 @@ data class ParticipantEntity(
     val viewedAt: String?,
     val signedAt: String?,
     val rejectedAt: String?,
-    val motivoRecusa: String?
+    val motivoRecusa: String?,
+    /** Modo local: imagem da assinatura (PNG em base64), usada para gerar o PDF final. */
+    val assinaturaPng: String? = null,
+    /** Modo local: dados do gesto da assinatura (JSON), guardados como evidência. */
+    val gestureMetadata: String? = null
 )
 
 @Entity(
@@ -124,4 +130,18 @@ data class PdfFileEntity(
     val salvoEm: Long,
     /** Status do documento no momento em que o arquivo foi salvo. */
     val statusDocumento: String
+)
+
+/** Modo local: contas de Admin e Signatário. Senha guardada só como hash (PasswordHasher). */
+@Entity(tableName = "users", indices = [Index(value = ["email"], unique = true)])
+data class UserEntity(
+    @PrimaryKey val id: String,
+    val nome: String,
+    val email: String,
+    val telefone: String?,
+    val role: String,
+    /** Admin que cadastrou este signatário (null para Admin). */
+    val adminId: String?,
+    val senhaHash: String,
+    val criadoEm: String
 )
