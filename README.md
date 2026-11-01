@@ -21,6 +21,11 @@ Envie um contrato, defina quem assina e onde, e acompanhe cada assinatura com tr
   <img src="lets-sign-android/docs/screenshots/06-assinar.png" width="190" alt="Assinar" />
   <img src="lets-sign-android/docs/screenshots/04-detalhe-escuro.png" width="190" alt="Acompanhamento no modo escuro" />
 </p>
+<p align="center">
+  <img src="lets-sign-android/docs/screenshots/07-impacto-esg.png" width="190" alt="Painel de impacto ESG" />
+  <img src="lets-sign-android/docs/screenshots/08-modelo-inteligente.png" width="190" alt="Modelo inteligente posicionando campos" />
+  <img src="lets-sign-android/docs/screenshots/09-assinatura-etapas.png" width="190" alt="Assinatura digitada ou desenhada" />
+</p>
 <p align="center"><sub>App Android nativo (Kotlin + Jetpack Compose)</sub></p>
 
 ## 🧭 Como funciona
@@ -35,6 +40,15 @@ flowchart LR
 ```
 
 Cada etapa gera um evento na **trilha de auditoria**: quem fez, quando e o hash do documento naquele momento.
+
+## ✨ Destaques
+
+- **Modelos inteligentes:** salve um documento como modelo; ao subir um PDF com o mesmo layout (NDA, proposta padrão), o app reconhece o modelo e posiciona as caixas sozinho, seguindo o texto âncora mesmo que o bloco de assinatura mude de página.
+- **Painel de impacto ESG:** litros de água, quilos de madeira e CO₂ poupados ao assinar sem papel, com níveis e conquistas (fatores conservadores e fontes citadas no app).
+- **Assinatura em 3 etapas**, como na versão web: revisar, assinar (digitar em 3 estilos ou desenhar) e código de verificação.
+- **Campos além da assinatura:** rubrica, carimbo/selo, nome, e-mail, CPF e data, preenchidos no PDF final.
+- **Organização:** contatos com CPF, grupos, pastas, categorias, observadores, lembretes e auditoria em abas.
+- **Word:** arquivos `.docx` são convertidos em PDF (só o texto) para assinar.
 
 ## 📦 O que tem neste repositório
 
@@ -84,14 +98,14 @@ A documentação interativa da API (Swagger) fica em **http://localhost:3000/api
 
 ## ✅ Qualidade
 
-- App Android: 28 testes unitários e 3 testes no emulador (fluxo completo sem servidor, do cadastro ao PDF final assinado, e migração do banco).
+- App Android: 42 testes unitários e 8 testes no emulador (fluxo completo sem servidor do cadastro ao PDF final, campos extras, observadores, modelos inteligentes, conversão de `.docx` e migrações do banco).
 - CI no GitHub Actions (`.github/workflows/android.yml`): testes + APK a cada push no app Android.
 
 ## 🗺️ Status
 
 | Módulo | Situação |
 |---|---|
-| App Android | Todos os fluxos do desafio: perfis Admin e Signatário, cadastro de signatários, assistente com editor de campos, revisão com o documento completo, envio sem duplicar, assinatura, acompanhamento, PDF final gerado no aparelho, banco local (Room) e nova versão que preserva a anterior |
+| App Android | Todos os fluxos do desafio: perfis Admin e Signatário, cadastro de signatários, assistente com editor de campos, revisão com o documento completo, envio sem duplicar, assinatura, acompanhamento, PDF final gerado no aparelho, banco local (Room) e nova versão que preserva a anterior. Visual da versão web, modelos inteligentes, painel ESG, campos extras, grupos, pastas e observadores |
 | API | Fluxo completo: upload, participantes, campos, envio, assinatura, recusa, nova versão, auditoria, e-mails |
 
 ## 📄 Licença
