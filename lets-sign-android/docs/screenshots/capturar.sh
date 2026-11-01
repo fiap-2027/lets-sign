@@ -18,7 +18,7 @@ UI=com.letsign.mobile.presentation.ui
 shot() { # arquivo, função @Preview (pacote.ArquivoKt.funcao), tema (no|yes)
   "$ADB" shell cmd uimode night "$3" > /dev/null
   "$ADB" shell am start -W -S -n "$PKG/androidx.compose.ui.tooling.PreviewActivity" --es composable "$2" > /dev/null
-  sleep 2
+  sleep 3  # tempo para animações (ex.: números do painel ESG) terminarem
   "$ADB" exec-out screencap -p > "$OUT/$1.png"
   echo "ok  $OUT/$1.png"
 }
@@ -33,6 +33,9 @@ for tema in no yes; do
   shot "05-signatario-inicio$sufixo"    "$S.documents.DocumentListScreensKt.SignerHomePreview" "$tema"
   shot "06-assinar$sufixo"              "$S.sign.SignDocumentScreenKt.SignDocumentPreview" "$tema"
 done
+shot "07-impacto-esg"              "$UI.screens.esg.EsgScreenKt.EsgPreview" no
+shot "08-modelo-inteligente"       "$S.wizard.NewDocumentScreenKt.WizardTemplateAppliedPreview" no
+shot "09-assinatura-etapas"        "$S.sign.SignDocumentScreenKt.SignDocumentHandwrittenPreview" no
 shot "10-cadastro"                 "$S.auth.AuthScreensKt.RegisterScreenPreview" no
 shot "11-login-erro"               "$S.auth.AuthScreensKt.LoginScreenErrorPreview" no
 shot "12-admin-vazio"              "$S.documents.DocumentListScreensKt.AdminHomeEmptyPreview" no
