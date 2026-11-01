@@ -7,7 +7,7 @@ async function main() {
   const admin = await prisma.user.upsert({
     where: { email: 'admin@letssign.com' },
     update: {},
-    create: { nome: 'Admin Demo LetsSign', email: 'admin@letssign.com', telefone: '+5511900000000', senhaHash: await bcrypt.hash('Admin@123', 10), role: Role.ADMIN },
+    create: { nome: 'Admin Demo EasySign', email: 'admin@letssign.com', telefone: '+5511900000000', senhaHash: await bcrypt.hash('Admin@123', 10), role: Role.ADMIN },
   });
   const signers = [
     { nome: 'Ana Contratante', email: 'ana@letssign.com', telefone: '+5511911111111' },

@@ -18,6 +18,6 @@ export class AppController {
     } catch {
       banco = 'indisponível';
     }
-    return { status: banco === 'ok' ? 'ok' : 'degradado', banco, servico: 'LetsSign Mobile API', timestamp: new Date().toISOString() };
+    return { status: banco === 'ok' ? 'ok' : 'degradado', banco, servico: 'EasySign Mobile API', timestamp: new Date().toISOString() };
   }
 }

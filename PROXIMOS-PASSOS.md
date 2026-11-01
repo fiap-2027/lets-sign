@@ -1,4 +1,4 @@
-# Próximos passos — LetsSign
+# Próximos passos — EasySign
 
 Roteiro para as próximas sessões com o Claude. Cada passo tem um **texto pronto para copiar e colar**.
 

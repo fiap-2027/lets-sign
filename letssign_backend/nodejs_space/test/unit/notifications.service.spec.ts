@@ -154,7 +154,7 @@ describe('NotificationsService', () => {
       expect(mailer.sendMail).toHaveBeenCalledWith(
         expect.objectContaining({
           to: 'newuser@example.com',
-          subject: '👋 Bem-vindo ao LetsSign',
+          subject: '👋 Bem-vindo ao EasySign',
           template: 'welcome',
           context: expect.objectContaining({
             nome: 'Novo Usuário',
@@ -189,7 +189,7 @@ describe('NotificationsService', () => {
       expect(mailer.sendMail).toHaveBeenCalledWith(
         expect.objectContaining({
           to: 'user@example.com',
-          subject: '🔐 Redefinição de senha - LetsSign',
+          subject: '🔐 Redefinição de senha - EasySign',
           template: 'password-reset',
           context: expect.objectContaining({
             nome: 'Usuário Teste',

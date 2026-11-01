@@ -27,7 +27,7 @@ import { NotificationsController } from './notifications.controller';
           },
         },
         defaults: {
-          from: `"LetsSign" <${config.get<string>('SMTP_FROM') || 'noreply@letssign.com'}>`,
+          from: `"EasySign" <${config.get<string>('SMTP_FROM') || 'noreply@letssign.com'}>`,
         },
         template: {
           dir: join(__dirname, 'templates'),

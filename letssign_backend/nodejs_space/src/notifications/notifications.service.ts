@@ -192,7 +192,7 @@ export class NotificationsService {
     try {
       await this.mailer.sendMail({
         to,
-        subject: '👋 Bem-vindo ao LetsSign',
+        subject: '👋 Bem-vindo ao EasySign',
         template: 'welcome',
         context: {
           nome,
@@ -217,7 +217,7 @@ export class NotificationsService {
       const resetLink = `${this.frontendUrl}/reset-password?token=${resetToken}`;
       await this.mailer.sendMail({
         to,
-        subject: '🔐 Redefinição de senha - LetsSign',
+        subject: '🔐 Redefinição de senha - EasySign',
         template: 'password-reset',
         context: {
           nome,

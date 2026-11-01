@@ -42,8 +42,8 @@ async function bootstrap() {
   app.useGlobalFilters(new GlobalExceptionFilter());
 
   const config = new DocumentBuilder()
-    .setTitle('LetsSign Mobile API')
-    .setDescription('API do app LetsSign: documentos PDF, signatários, campos de assinatura (coordenadas normalizadas 0..1), envio, assinatura com metadados do gesto e trilha de auditoria SHA-256.')
+    .setTitle('EasySign Mobile API')
+    .setDescription('API do app EasySign: documentos PDF, signatários, campos de assinatura (coordenadas normalizadas 0..1), envio, assinatura com metadados do gesto e trilha de auditoria SHA-256.')
     .setVersion('1.0')
     .addBearerAuth()
     .build();
@@ -62,13 +62,13 @@ async function bootstrap() {
       next();
     });
     SwaggerModule.setup(path, app, doc, {
-      customSiteTitle: 'LetsSign Mobile API',
+      customSiteTitle: 'EasySign Mobile API',
       customCss: css,
       customfavIcon: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Crect width=%2216%22 height=%2216%22 rx=%223%22 fill=%22%23c2185b%22/%3E%3C/svg%3E',
       swaggerOptions: { layout: 'BaseLayout', persistAuthorization: true },
     });
   }
   await app.listen(3000);
-  Logger.log('LetsSign API rodando na porta 3000', 'Bootstrap');
+  Logger.log('EasySign API rodando na porta 3000', 'Bootstrap');
 }
 bootstrap();

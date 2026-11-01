@@ -393,7 +393,7 @@ export class DocumentsService {
       .filter((x): x is NonNullable<typeof x> => !!x);
     let finalBuf: Buffer;
     try {
-      finalBuf = await stampPdf(Buffer.from(d.pdf), stamps, `LetsSign - documento ${d.id} v${d.versao} - hash original SHA-256 ${d.hashSha256}`);
+      finalBuf = await stampPdf(Buffer.from(d.pdf), stamps, `EasySign - documento ${d.id} v${d.versao} - hash original SHA-256 ${d.hashSha256}`);
     } catch (e) {
       this.logger.error(`Falha ao gerar PDF final de ${id}`, (e as Error).stack);
       finalBuf = Buffer.from(d.pdf);

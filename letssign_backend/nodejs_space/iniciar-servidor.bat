@@ -1,9 +1,9 @@
 @echo off
 setlocal enabledelayedexpansion
-rem Liga o servidor do LetsSign (porta 3000). Deixe esta janela aberta enquanto testa o app.
+rem Liga o servidor do EasySign (porta 3000). Deixe esta janela aberta enquanto testa o app.
 rem Para desligar: feche a janela ou aperte Ctrl+C.
 cd /d "%~dp0"
-title Servidor LetsSign
+title Servidor EasySign
 if not exist node_modules (
   echo Instalando dependencias pela primeira vez...
   call npm install --no-audit --no-fund || goto erro

@@ -1,6 +1,6 @@
 <div align="center">
 
-# ✍️ LetsSign
+<img src="lets-sign-android/docs/logo/easysign-logo.svg" width="360" alt="EasySign">
 
 **Plataforma de assinatura eletrônica de documentos PDF**
 
@@ -49,6 +49,7 @@ Cada etapa gera um evento na **trilha de auditoria**: quem fez, quando e o hash 
 - **Campos além da assinatura:** rubrica, carimbo/selo, nome, e-mail, CPF e data, preenchidos no PDF final.
 - **Organização:** contatos com CPF, grupos, pastas, categorias, observadores, lembretes e auditoria em abas.
 - **Word:** arquivos `.docx` são convertidos em PDF (só o texto) para assinar.
+- **Dados de demonstração:** um toque no login cria 17 documentos em todos os estágios e enche o painel ESG (Admin `demo@easysign.com`, senha `demo123`).
 
 ## 📦 O que tem neste repositório
 
@@ -98,7 +99,7 @@ A documentação interativa da API (Swagger) fica em **http://localhost:3000/api
 
 ## ✅ Qualidade
 
-- App Android: 42 testes unitários e 8 testes no emulador (fluxo completo sem servidor do cadastro ao PDF final, campos extras, observadores, modelos inteligentes, conversão de `.docx` e migrações do banco).
+- App Android: 42 testes unitários e 9 testes no emulador (fluxo completo sem servidor do cadastro ao PDF final, campos extras, observadores, modelos inteligentes, conversão de `.docx`, migrações do banco e dados de demonstração).
 - CI no GitHub Actions (`.github/workflows/android.yml`): testes + APK a cada push no app Android.
 
 ## 🗺️ Status
