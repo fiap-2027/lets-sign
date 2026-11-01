@@ -98,7 +98,7 @@ private suspend fun <T> local(defaultError: String, block: suspend () -> T): Res
     } catch (e: NotLoggedInException) {
         Result.failure(e)
     } catch (e: Exception) {
-        Log.e("LetsSign", defaultError, e)
+        Log.e("EasySign", defaultError, e)
         Result.failure(Exception(defaultError, e))
     }
 }
@@ -686,7 +686,7 @@ class LocalDocumentRepository(
             when (FieldType.entries.firstOrNull { it.name == f.tipo } ?: FieldType.ASSINATURA) {
                 FieldType.ASSINATURA -> Stamp(f.page, f.x, f.y, f.width, f.height, pngs.getValue(f.signerId), "$nome - ${p.roleLabel} - ${p.signedAt}")
                 FieldType.RUBRICA -> Stamp(f.page, f.x, f.y, f.width, f.height, rubricas[f.signerId] ?: pngs.getValue(f.signerId), "")
-                FieldType.CARIMBO -> text("ASSINADO ELETRONICAMENTE", nome, quando, "LetsSign", boxed = true)
+                FieldType.CARIMBO -> text("ASSINADO ELETRONICAMENTE", nome, quando, "EasySign", boxed = true)
                 FieldType.NOME -> text(nome)
                 FieldType.EMAIL -> text(p.signerEmail.orEmpty())
                 FieldType.CPF -> text(DocumentRules.formatCpf(p.signerCpf))
@@ -694,12 +694,12 @@ class LocalDocumentRepository(
             }
         }
         val original = File(files.get(LOCAL, id, PdfKind.ORIGINAL.apiValue, doc.versao)?.caminho ?: return)
-        val footer = "LetsSign - documento ${doc.id} v${doc.versao} - hash original SHA-256 ${doc.hashSha256}"
+        val footer = "EasySign - documento ${doc.id} v${doc.versao} - hash original SHA-256 ${doc.hashSha256}"
         val bytes = try {
             stamper.stamp(original, stamps, footer)
         } catch (e: Exception) {
             // Mesmo comportamento do backend: sem conseguir carimbar, o final é o original (as assinaturas ficam no histórico).
-            Log.e("LetsSign", "Falha ao gerar o PDF final de $id", e)
+            Log.e("EasySign", "Falha ao gerar o PDF final de $id", e)
             original.readBytes()
         }
         val file = pdfStorage.save(LOCAL, id, PdfKind.FINAL.apiValue, doc.versao, bytes)

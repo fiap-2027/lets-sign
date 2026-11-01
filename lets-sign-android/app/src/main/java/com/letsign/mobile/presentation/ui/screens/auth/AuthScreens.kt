@@ -1,5 +1,6 @@
 package com.letsign.mobile.presentation.ui.screens.auth
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,7 +14,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
@@ -40,15 +40,23 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.letsign.mobile.BuildConfig
+import com.letsign.mobile.R
+import com.letsign.mobile.data.local.DemoData
 import com.letsign.mobile.domain.model.User
-import com.letsign.mobile.presentation.theme.LetsSignTheme
+import com.letsign.mobile.presentation.theme.EasySignTheme
 import com.letsign.mobile.presentation.ui.preview.ScreenPreviews
 import com.letsign.mobile.presentation.viewmodel.AuthViewModel
 
@@ -66,7 +74,8 @@ fun LoginScreen(
         isLoading = uiState.isLoading,
         error = uiState.error ?: notice,
         onLogin = viewModel::login,
-        onNavigateToRegister = onNavigateToRegister
+        onNavigateToRegister = onNavigateToRegister,
+        onLoadDemo = if (BuildConfig.USE_API) null else viewModel::loadDemo
     )
 }
 
@@ -77,12 +86,13 @@ fun LoginContent(
     error: String?,
     onLogin: (email: String, senha: String) -> Unit,
     onNavigateToRegister: () -> Unit,
-    initialEmail: String = ""
+    initialEmail: String = "",
+    onLoadDemo: (() -> Unit)? = null
 ) {
     var email by rememberSaveable { mutableStateOf(initialEmail) }
     var password by rememberSaveable { mutableStateOf("") }
 
-    AuthScaffold(icon = Icons.Default.Description, title = "LetsSign", subtitle = "Entre na sua conta") {
+    AuthScaffold(icon = null, title = "EasySign", subtitle = "Entre na sua conta") {
         OutlinedTextField(
             value = email,
             onValueChange = { email = it },
@@ -100,6 +110,16 @@ fun LoginContent(
         PrimaryButton(text = "Entrar", isLoading = isLoading, onClick = { onLogin(email, password) })
 
         FooterLink(question = "Não tem conta?", action = "Cadastre-se", onClick = onNavigateToRegister)
+
+        if (onLoadDemo != null) {
+            TextButton(onClick = onLoadDemo, enabled = !isLoading) { Text("Carregar dados de demonstração") }
+            Text(
+                "Admin: ${DemoData.ADMIN_EMAIL} · Signatários: joao@demo.com, mariana@demo.com… · Senha: ${DemoData.SENHA}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+        }
 
         // Mostra qual versão está instalada (útil para conferir se o APK novo entrou).
         Text(
@@ -192,7 +212,7 @@ fun RegisterContent(
 }
 
 @Composable
-private fun AuthScaffold(icon: ImageVector, title: String, subtitle: String, content: @Composable () -> Unit) {
+private fun AuthScaffold(icon: ImageVector?, title: String, subtitle: String, content: @Composable () -> Unit) {
     Scaffold { padding ->
         Box(
             modifier = Modifier.fillMaxSize().padding(padding).imePadding(),
@@ -203,10 +223,26 @@ private fun AuthScaffold(icon: ImageVector, title: String, subtitle: String, con
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(80.dp)) {
-                    Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.padding(18.dp))
+                if (icon == null) {
+                    // Sem ícone = tela de entrada: mostra a logo EasySign (ícone + "Easy" roxo, "Sign" escuro e o check).
+                    Image(painterResource(R.drawable.ic_launcher), contentDescription = null, modifier = Modifier.size(80.dp))
+                    Row(verticalAlignment = Alignment.Top) {
+                        Text(
+                            buildAnnotatedString {
+                                withStyle(SpanStyle(color = MaterialTheme.colorScheme.primary)) { append("Easy") }
+                                withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurface)) { append("Sign") }
+                            },
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Image(painterResource(R.drawable.ic_logo_check), contentDescription = null, modifier = Modifier.size(22.dp))
+                    }
+                } else {
+                    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(80.dp)) {
+                        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.padding(18.dp))
+                    }
+                    Text(text = title, style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
                 }
-                Text(text = title, style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
                 Text(text = subtitle, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 content()
             }
@@ -265,18 +301,18 @@ private fun FooterLink(question: String, action: String, onClick: () -> Unit) {
 
 @ScreenPreviews
 @Composable
-fun LoginScreenPreview() = LetsSignTheme {
+fun LoginScreenPreview() = EasySignTheme {
     LoginContent(isLoading = false, error = null, onLogin = { _, _ -> }, onNavigateToRegister = {}, initialEmail = "marina@letssign.com")
 }
 
 @ScreenPreviews
 @Composable
-fun LoginScreenErrorPreview() = LetsSignTheme {
+fun LoginScreenErrorPreview() = EasySignTheme {
     LoginContent(isLoading = false, error = "E-mail ou senha incorretos.", onLogin = { _, _ -> }, onNavigateToRegister = {}, initialEmail = "marina@letssign.com")
 }
 
 @ScreenPreviews
 @Composable
-fun RegisterScreenPreview() = LetsSignTheme {
+fun RegisterScreenPreview() = EasySignTheme {
     RegisterContent(isLoading = false, error = null, onRegister = { _, _, _, _ -> }, onValidationError = {}, onNavigateToLogin = {})
 }

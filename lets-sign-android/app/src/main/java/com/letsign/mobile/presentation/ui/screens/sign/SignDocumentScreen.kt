@@ -58,14 +58,14 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.letsign.mobile.domain.model.FieldType
-import com.letsign.mobile.presentation.theme.LetsSignTheme
+import com.letsign.mobile.presentation.theme.EasySignTheme
 import com.letsign.mobile.presentation.theme.StatusColors
 import com.letsign.mobile.presentation.ui.components.CenteredLoading
 import com.letsign.mobile.presentation.ui.components.DrawSignatureArea
 import com.letsign.mobile.presentation.ui.components.DrawnSignature
 import com.letsign.mobile.presentation.ui.components.EmptyState
 import com.letsign.mobile.presentation.ui.components.FieldBox
-import com.letsign.mobile.presentation.ui.components.LetsSignTopAppBar
+import com.letsign.mobile.presentation.ui.components.EasySignTopAppBar
 import com.letsign.mobile.presentation.ui.components.LoadingOverlay
 import com.letsign.mobile.presentation.ui.components.PdfLoad
 import com.letsign.mobile.presentation.ui.components.PdfPageView
@@ -140,7 +140,7 @@ fun SignDocumentContent(
     }
 
     Scaffold(
-        topBar = { LetsSignTopAppBar(title = "Assinar documento", showBackButton = true, onBackClick = onBack) },
+        topBar = { EasySignTopAppBar(title = "Assinar documento", showBackButton = true, onBackClick = onBack) },
         bottomBar = {
             if (signing) SignFooter(
                 primaryText = if (step == 2) "Assinar como ${document?.meuPapel?.label?.lowercase() ?: "parte"}" else "Próximo passo",
@@ -332,7 +332,7 @@ private fun SignFooter(primaryText: String, primaryEnabled: Boolean, onBack: () 
             Text(
                 buildAnnotatedString {
                     append("Ao assinar o documento, você está de acordo com os ")
-                    withStyle(SpanStyle(color = MaterialTheme.colorScheme.primary)) { append("Termos de Uso do LetsSign") }
+                    withStyle(SpanStyle(color = MaterialTheme.colorScheme.primary)) { append("Termos de Uso do EasySign") }
                 },
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -368,24 +368,24 @@ private val previewState = SignDocumentUiState(
 
 @ScreenPreviews
 @Composable
-fun SignDocumentPreview() = LetsSignTheme {
+fun SignDocumentPreview() = EasySignTheme {
     SignDocumentContent(previewState, {}, { _, _, _, _ -> }, {}, {}, {})
 }
 
 @ScreenPreviews
 @Composable
-fun SignDocumentHandwrittenPreview() = LetsSignTheme {
+fun SignDocumentHandwrittenPreview() = EasySignTheme {
     SignDocumentContent(previewState, {}, { _, _, _, _ -> }, {}, {}, {}, initialStep = 1)
 }
 
 @ScreenPreviews
 @Composable
-fun SignDocumentCodePreview() = LetsSignTheme {
+fun SignDocumentCodePreview() = EasySignTheme {
     SignDocumentContent(previewState.copy(sentCode = "482913"), {}, { _, _, _, _ -> }, {}, {}, {}, initialStep = 2)
 }
 
 @ScreenPreviews
 @Composable
-fun SignDocumentDonePreview() = LetsSignTheme {
+fun SignDocumentDonePreview() = EasySignTheme {
     SignDocumentContent(SignDocumentUiState(signedMessage = "Assinatura registrada com sucesso.", isLoading = false), {}, { _, _, _, _ -> }, {}, {}, {})
 }

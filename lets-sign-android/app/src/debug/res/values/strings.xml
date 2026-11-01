@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- A versão do Android Studio (pacote .debug) aparece com outro nome para não confundir com o APK. -->
-    <string name="app_name">LetsSign (debug)</string>
+    <string name="app_name">EasySign (debug)</string>
 </resources>

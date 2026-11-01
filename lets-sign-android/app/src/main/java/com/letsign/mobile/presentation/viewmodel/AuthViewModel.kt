@@ -2,6 +2,7 @@ package com.letsign.mobile.presentation.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.letsign.mobile.data.local.DemoData
 import com.letsign.mobile.domain.model.User
 import com.letsign.mobile.domain.repository.AuthRepository
 import com.letsign.mobile.domain.rules.DocumentRules
@@ -48,7 +49,8 @@ class SessionViewModel @Inject constructor(
 
 @HiltViewModel
 class AuthViewModel @Inject constructor(
-    private val authRepository: AuthRepository
+    private val authRepository: AuthRepository,
+    private val demoData: DemoData
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AuthUiState())
@@ -85,6 +87,16 @@ class AuthViewModel @Inject constructor(
             authRepository.register(nome, email, telefone, senha)
                 .onSuccess { _uiState.update { it.copy(isLoading = false) } }
                 .onFailure { e -> _uiState.update { it.copy(isLoading = false, error = e.message ?: "Erro ao cadastrar") } }
+        }
+    }
+
+    /** Cria (uma vez) os dados de demonstração e entra como o Admin da demonstração. */
+    fun loadDemo() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, error = null) }
+            demoData.load()
+                .onSuccess { _uiState.update { it.copy(isLoading = false) } }
+                .onFailure { e -> _uiState.update { it.copy(isLoading = false, error = "Não foi possível criar a demonstração: ${e.message}") } }
         }
     }
 

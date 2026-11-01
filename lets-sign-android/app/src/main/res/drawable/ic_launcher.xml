@@ -1,12 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Ícone provisório: documento branco sobre círculo rosa. Troque por um ícone adaptativo final. -->
+<!-- Ícone EasySign: check da logo LetsSign em branco sobre quadrado roxo → azul-marinho (fonte: docs/logo/easysign-icon.svg). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="48dp"
     android:height="48dp"
     android:viewportWidth="48"
     android:viewportHeight="48">
-    <path android:fillColor="#C2185B" android:pathData="M24,0a24,24 0,1 1,0 48a24,24 0,1 1,0 -48z" />
-    <path android:fillColor="#FFFFFF" android:pathData="M16,11h11l7,7v19a2,2 0,0 1,-2 2H16a2,2 0,0 1,-2 -2V13a2,2 0,0 1,2 -2z" />
-    <path android:fillColor="#F8BBD0" android:pathData="M27,11v7h7z" />
-    <path android:strokeColor="#C2185B" android:strokeWidth="2" android:strokeLineCap="round" android:pathData="M18,32c2,-3 4,-3 5,0s3,3 5,-2" />
+    <path android:pathData="M10.5,0h27a10.5,10.5 0,0 1,10.5 10.5v27a10.5,10.5 0,0 1,-10.5 10.5h-27a10.5,10.5 0,0 1,-10.5 -10.5v-27a10.5,10.5 0,0 1,10.5 -10.5z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="48" android:endY="48">
+                <item android:offset="0" android:color="#FF7F56F5" />
+                <item android:offset="1" android:color="#FF3D3E80" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <group android:translateX="9.09" android:translateY="8.25" android:scaleX="1.21875" android:scaleY="1.21875">
+        <path android:fillColor="#FFFFFF" android:pathData="M2,13 L5.2,11.2 L8.8,15.4 L19.5,3 L22.5,4.6 L9.4,20.6 Z" />
+    </group>
+    <path android:strokeColor="#73FFFFFF" android:strokeWidth="1.5" android:strokeLineCap="round" android:pathData="M14.06,37.1H33.94" />
 </vector>

@@ -45,7 +45,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.letsign.mobile.presentation.theme.LetsSignTheme
+import com.letsign.mobile.presentation.theme.EasySignTheme
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import java.io.ByteArrayOutputStream
@@ -220,7 +220,7 @@ private fun List<Offset>.toPath() = Path().apply {
 
 @Preview(name = "Desenhar", widthDp = 360, showBackground = true)
 @Composable
-fun DrawSignatureAreaPreview() = LetsSignTheme {
+fun DrawSignatureAreaPreview() = EasySignTheme {
     // Traço fictício em formato de rubrica.
     val stroke = (0..60).map { i ->
         val t = i / 60f
@@ -231,6 +231,6 @@ fun DrawSignatureAreaPreview() = LetsSignTheme {
 
 @Preview(name = "Digitar", widthDp = 360, showBackground = true)
 @Composable
-fun TypedSignaturePreviewPreview() = LetsSignTheme {
+fun TypedSignaturePreviewPreview() = EasySignTheme {
     Surface { TypedSignaturePreview("Dionisio Leonardo", TypedStyle.STYLE_1, Modifier.padding(16.dp)) }
 }

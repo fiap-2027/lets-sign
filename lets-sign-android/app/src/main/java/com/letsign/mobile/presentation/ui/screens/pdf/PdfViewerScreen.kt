@@ -28,10 +28,10 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.letsign.mobile.data.pdf.PdfDocumentRenderer
-import com.letsign.mobile.presentation.theme.LetsSignTheme
+import com.letsign.mobile.presentation.theme.EasySignTheme
 import com.letsign.mobile.presentation.ui.components.CenteredLoading
 import com.letsign.mobile.presentation.ui.components.EmptyState
-import com.letsign.mobile.presentation.ui.components.LetsSignTopAppBar
+import com.letsign.mobile.presentation.ui.components.EasySignTopAppBar
 import com.letsign.mobile.presentation.ui.components.PdfLoad
 import com.letsign.mobile.presentation.ui.components.PdfPageView
 import com.letsign.mobile.presentation.ui.components.rememberPdfRenderer
@@ -85,7 +85,7 @@ fun PdfViewerContent(
     val pageCount = renderer?.info?.pageCount ?: previewPages
     Scaffold(
         topBar = {
-            LetsSignTopAppBar(
+            EasySignTopAppBar(
                 title = state.title,
                 subtitle = state.fileName ?: if (pageCount > 0) "$pageCount página(s)" else null,
                 showBackButton = true,
@@ -119,6 +119,6 @@ fun PdfViewerContent(
 
 @ScreenPreviews
 @Composable
-fun PdfViewerPreview() = LetsSignTheme {
+fun PdfViewerPreview() = EasySignTheme {
     PdfViewerContent(PdfViewerUiState(title = "Documento final", isLoading = false), PdfLoad.Loading, {}, {}, {}, {}, previewPages = 3)
 }

@@ -96,7 +96,7 @@ import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Sell
 import com.letsign.mobile.domain.model.User
 import com.letsign.mobile.domain.rules.DocumentRules
-import com.letsign.mobile.presentation.theme.LetsSignTheme
+import com.letsign.mobile.presentation.theme.EasySignTheme
 import com.letsign.mobile.presentation.ui.components.Avatar
 import com.letsign.mobile.presentation.ui.components.BottomActions
 import com.letsign.mobile.presentation.ui.components.CenteredLoading
@@ -104,7 +104,7 @@ import com.letsign.mobile.presentation.ui.components.ConfirmDialog
 import com.letsign.mobile.presentation.ui.components.EmptyState
 import com.letsign.mobile.presentation.ui.components.ErrorBanner
 import com.letsign.mobile.presentation.ui.components.FieldBox
-import com.letsign.mobile.presentation.ui.components.LetsSignTopAppBar
+import com.letsign.mobile.presentation.ui.components.EasySignTopAppBar
 import com.letsign.mobile.presentation.ui.components.PdfLoad
 import com.letsign.mobile.presentation.ui.components.PdfPageView
 import com.letsign.mobile.presentation.ui.components.SectionCard
@@ -230,7 +230,7 @@ fun NewDocumentContent(state: WizardUiState, actions: WizardActions) {
 
     Scaffold(
         topBar = {
-            LetsSignTopAppBar(
+            EasySignTopAppBar(
                 title = when {
                     !state.editMode -> "Novo documento"
                     state.versao > 1 -> "Nova versão (v${state.versao})"
@@ -859,7 +859,7 @@ private fun TemplateBanner(t: AppliedTemplate, onUndo: () -> Unit) {
 private fun FullPdfDialog(state: WizardUiState, renderer: PdfDocumentRenderer?, onClose: () -> Unit) {
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Scaffold(
-            topBar = { LetsSignTopAppBar(title = "Documento final", subtitle = state.titulo, showBackButton = true, onBackClick = onClose) }
+            topBar = { EasySignTopAppBar(title = "Documento final", subtitle = state.titulo, showBackButton = true, onBackClick = onClose) }
         ) { padding ->
             LazyColumn(
                 Modifier.fillMaxSize().padding(padding),
@@ -897,57 +897,57 @@ private val previewBase = WizardUiState(
 
 @ScreenPreviews
 @Composable
-fun WizardDataEmptyPreview() = LetsSignTheme { NewDocumentContent(WizardUiState(), WizardActions()) }
+fun WizardDataEmptyPreview() = EasySignTheme { NewDocumentContent(WizardUiState(), WizardActions()) }
 
 @ScreenPreviews
 @Composable
-fun WizardDataPreview() = LetsSignTheme { NewDocumentContent(previewBase, WizardActions()) }
+fun WizardDataPreview() = EasySignTheme { NewDocumentContent(previewBase, WizardActions()) }
 
 @ScreenPreviews
 @Composable
-fun WizardInvalidPdfPreview() = LetsSignTheme {
+fun WizardInvalidPdfPreview() = EasySignTheme {
     NewDocumentContent(WizardUiState(pdfError = "O arquivo não é um PDF válido ou está corrompido."), WizardActions())
 }
 
 @ScreenPreviews
 @Composable
-fun WizardNewVersionPreview() = LetsSignTheme {
+fun WizardNewVersionPreview() = EasySignTheme {
     NewDocumentContent(previewBase.copy(editMode = true, versao = 2, serverDocumentId = "d-1"), WizardActions())
 }
 
 @ScreenPreviews
 @Composable
-fun WizardSignersPreview() = LetsSignTheme { NewDocumentContent(previewBase.copy(step = WizardStep.SIGNATARIOS), WizardActions()) }
+fun WizardSignersPreview() = EasySignTheme { NewDocumentContent(previewBase.copy(step = WizardStep.SIGNATARIOS), WizardActions()) }
 
 @ScreenPreviews
 @Composable
-fun WizardFieldsPreview() = LetsSignTheme {
+fun WizardFieldsPreview() = EasySignTheme {
     NewDocumentContent(previewBase.copy(step = WizardStep.CAMPOS, selectedFieldId = "l-1"), WizardActions())
 }
 
 @ScreenPreviews
 @Composable
-fun WizardReviewPreview() = LetsSignTheme { NewDocumentContent(previewBase.copy(step = WizardStep.REVISAO), WizardActions()) }
+fun WizardReviewPreview() = EasySignTheme { NewDocumentContent(previewBase.copy(step = WizardStep.REVISAO), WizardActions()) }
 
 @ScreenPreviews
 @Composable
-fun WizardSendFailedPreview() = LetsSignTheme {
+fun WizardSendFailedPreview() = EasySignTheme {
     NewDocumentContent(previewBase.copy(step = WizardStep.REVISAO, outcome = SendOutcome.Failure("Erro de conexão. Verifique sua internet.")), WizardActions())
 }
 
 @ScreenPreviews
 @Composable
-fun WizardSuccessPreview() = LetsSignTheme {
+fun WizardSuccessPreview() = EasySignTheme {
     NewDocumentContent(previewBase.copy(outcome = SendOutcome.Success("d-1", "Documento enviado com sucesso.", false)), WizardActions())
 }
 
 @ScreenPreviews
 @Composable
-fun WizardFullPdfPreview() = LetsSignTheme { FullPdfDialog(previewBase, renderer = null, onClose = {}) }
+fun WizardFullPdfPreview() = EasySignTheme { FullPdfDialog(previewBase, renderer = null, onClose = {}) }
 
 @ScreenPreviews
 @Composable
-fun WizardTemplateAppliedPreview() = LetsSignTheme {
+fun WizardTemplateAppliedPreview() = EasySignTheme {
     NewDocumentContent(
         previewBase.copy(
             step = WizardStep.CAMPOS,

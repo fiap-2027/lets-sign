@@ -39,9 +39,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.letsign.mobile.domain.model.Document
 import com.letsign.mobile.domain.rules.EsgBadge
 import com.letsign.mobile.domain.rules.EsgImpact
-import com.letsign.mobile.presentation.theme.LetsSignTheme
+import com.letsign.mobile.presentation.theme.EasySignTheme
 import com.letsign.mobile.presentation.theme.StatusColors
-import com.letsign.mobile.presentation.ui.components.LetsSignTopAppBar
+import com.letsign.mobile.presentation.ui.components.EasySignTopAppBar
 import com.letsign.mobile.presentation.ui.components.SectionCard
 import com.letsign.mobile.presentation.ui.components.WebCard
 import com.letsign.mobile.presentation.ui.preview.PreviewData
@@ -69,7 +69,7 @@ fun EsgContent(documents: List<Document>, onBack: () -> Unit) {
     val k = grow.value.toDouble()
 
     Scaffold(
-        topBar = { LetsSignTopAppBar(title = "Impacto ESG", subtitle = "O que o papel digital já poupou", showBackButton = true, onBackClick = onBack) }
+        topBar = { EasySignTopAppBar(title = "Impacto ESG", subtitle = "O que o papel digital já poupou", showBackButton = true, onBackClick = onBack) }
     ) { padding ->
         Column(
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
@@ -201,4 +201,4 @@ private fun mass(kg: Double) = when {
 
 @ScreenPreviews
 @Composable
-fun EsgPreview() = LetsSignTheme { EsgContent(PreviewData.documents, {}) }
+fun EsgPreview() = EasySignTheme { EsgContent(PreviewData.documents, {}) }

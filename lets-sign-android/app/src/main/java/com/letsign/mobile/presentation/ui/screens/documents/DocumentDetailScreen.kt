@@ -93,14 +93,14 @@ import com.letsign.mobile.domain.model.LocalPdf
 import com.letsign.mobile.domain.model.Participant
 import com.letsign.mobile.domain.model.PdfKind
 import com.letsign.mobile.domain.model.SignerStatus
-import com.letsign.mobile.presentation.theme.LetsSignTheme
+import com.letsign.mobile.presentation.theme.EasySignTheme
 import com.letsign.mobile.presentation.theme.StatusColors
 import com.letsign.mobile.presentation.ui.components.Avatar
 import com.letsign.mobile.presentation.ui.components.CenteredLoading
 import com.letsign.mobile.presentation.ui.components.ConfirmDialog
 import com.letsign.mobile.presentation.ui.components.DocumentStatusChip
 import com.letsign.mobile.presentation.ui.components.EmptyState
-import com.letsign.mobile.presentation.ui.components.LetsSignTopAppBar
+import com.letsign.mobile.presentation.ui.components.EasySignTopAppBar
 import com.letsign.mobile.presentation.ui.components.LoadingOverlay
 import com.letsign.mobile.presentation.ui.components.SectionCard
 import com.letsign.mobile.presentation.ui.components.SignerStatusChip
@@ -181,7 +181,7 @@ fun DocumentDetailContent(
 
     Scaffold(
         topBar = {
-            LetsSignTopAppBar(
+            EasySignTopAppBar(
                 title = document?.titulo ?: "Documento",
                 showBackButton = true,
                 onBackClick = onBack,
@@ -700,25 +700,25 @@ private fun RejectDialog(onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
 
 @ScreenPreviews
 @Composable
-fun DocumentDetailAdminPreview() = LetsSignTheme {
+fun DocumentDetailAdminPreview() = EasySignTheme {
     DocumentDetailContent(DocumentDetailUiState(document = PreviewData.document, localPdfs = PreviewData.localPdfs, currentUserId = PreviewData.admin.id), {}, {}, {}, {}, {}, {}, {})
 }
 
 @ScreenPreviews
 @Composable
-fun DocumentDetailSignerPreview() = LetsSignTheme {
+fun DocumentDetailSignerPreview() = EasySignTheme {
     DocumentDetailContent(DocumentDetailUiState(document = PreviewData.signerDocument, currentUserId = PreviewData.ana.id), {}, {}, {}, {}, {}, {}, {})
 }
 
 @ScreenPreviews
 @Composable
-fun DocumentDetailSignaturesPreview() = LetsSignTheme {
+fun DocumentDetailSignaturesPreview() = EasySignTheme {
     DocumentDetailContent(DocumentDetailUiState(document = PreviewData.document, currentUserId = PreviewData.admin.id), {}, {}, {}, {}, {}, {}, {}, initialTab = 1)
 }
 
 @ScreenPreviews
 @Composable
-fun DocumentDetailPermissionsPreview() = LetsSignTheme {
+fun DocumentDetailPermissionsPreview() = EasySignTheme {
     DocumentDetailContent(
         DocumentDetailUiState(
             document = PreviewData.document.copy(observadores = listOf(PreviewData.signers.last())),

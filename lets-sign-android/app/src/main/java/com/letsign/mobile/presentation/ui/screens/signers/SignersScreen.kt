@@ -67,11 +67,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.letsign.mobile.domain.model.SignerGroup
 import com.letsign.mobile.domain.model.User
 import com.letsign.mobile.domain.rules.DocumentRules
-import com.letsign.mobile.presentation.theme.LetsSignTheme
+import com.letsign.mobile.presentation.theme.EasySignTheme
 import com.letsign.mobile.presentation.ui.components.Avatar
 import com.letsign.mobile.presentation.ui.components.ConfirmDialog
 import com.letsign.mobile.presentation.ui.components.EmptyState
-import com.letsign.mobile.presentation.ui.components.LetsSignTopAppBar
+import com.letsign.mobile.presentation.ui.components.EasySignTopAppBar
 import com.letsign.mobile.presentation.ui.components.SnackbarMessage
 import com.letsign.mobile.presentation.ui.components.WebCard
 import com.letsign.mobile.presentation.ui.preview.PreviewData
@@ -139,7 +139,7 @@ fun SignersContent(state: SignersUiState, actions: ContactsActions, initialTab: 
     SnackbarMessage(snackbar, state.message ?: state.error, actions.onMessagesShown)
 
     Scaffold(
-        topBar = { LetsSignTopAppBar(title = "Contatos", subtitle = "${state.signers.size} contato(s) • ${state.groups.size} grupo(s)", showBackButton = true, onBackClick = actions.onBack) },
+        topBar = { EasySignTopAppBar(title = "Contatos", subtitle = "${state.signers.size} contato(s) • ${state.groups.size} grupo(s)", showBackButton = true, onBackClick = actions.onBack) },
         floatingActionButton = {
             if (tab == 0) ExtendedFloatingActionButton(onClick = actions.onNew, icon = { Icon(Icons.Default.PersonAdd, contentDescription = null) }, text = { Text("Novo contato") })
             else ExtendedFloatingActionButton(onClick = actions.onNewGroup, icon = { Icon(Icons.Default.GroupAdd, contentDescription = null) }, text = { Text("Novo grupo") })
@@ -372,18 +372,18 @@ private val previewGroups = listOf(SignerGroup("g1", "Diretoria", PreviewData.si
 
 @ScreenPreviews
 @Composable
-fun SignersPreview() = LetsSignTheme {
+fun SignersPreview() = EasySignTheme {
     SignersContent(SignersUiState(signers = PreviewData.signers, groups = previewGroups), ContactsActions())
 }
 
 @ScreenPreviews
 @Composable
-fun SignersGroupsPreview() = LetsSignTheme {
+fun SignersGroupsPreview() = EasySignTheme {
     SignersContent(SignersUiState(signers = PreviewData.signers, groups = previewGroups), ContactsActions(), initialTab = 1)
 }
 
 @ScreenPreviews
 @Composable
-fun SignerFormPreview() = LetsSignTheme {
+fun SignerFormPreview() = EasySignTheme {
     SignersContent(SignersUiState(signers = PreviewData.signers, form = SignerForm(error = "Informe um CPF válido.")), ContactsActions())
 }

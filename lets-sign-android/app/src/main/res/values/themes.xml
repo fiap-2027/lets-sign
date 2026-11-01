@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Cores e tipografia ficam no tema Compose (presentation/theme/Theme.kt). -->
-    <style name="Theme.LetsSign" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.EasySign" parent="android:Theme.Material.Light.NoActionBar" />
 </resources>

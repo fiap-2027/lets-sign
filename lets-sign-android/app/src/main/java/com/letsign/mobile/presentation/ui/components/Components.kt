@@ -49,7 +49,7 @@ import com.letsign.mobile.presentation.theme.StatusColors
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LetsSignTopAppBar(
+fun EasySignTopAppBar(
     title: String,
     showBackButton: Boolean = false,
     onBackClick: () -> Unit = {},

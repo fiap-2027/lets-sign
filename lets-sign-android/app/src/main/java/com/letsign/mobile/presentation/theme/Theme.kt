@@ -12,7 +12,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
-// Paleta da versão web do LetsSign: roxo (botões/abas), azul-marinho (sidebar), fundo #FAFAFC.
+// Paleta da versão web do EasySign: roxo (botões/abas), azul-marinho (sidebar), fundo #FAFAFC.
 private val LightColorScheme = lightColorScheme(
     primary = Color(0xFF7F56F5),
     onPrimary = Color.White,
@@ -108,7 +108,7 @@ val Shapes = Shapes(
 )
 
 @Composable
-fun LetsSignTheme(
+fun EasySignTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit
 ) {

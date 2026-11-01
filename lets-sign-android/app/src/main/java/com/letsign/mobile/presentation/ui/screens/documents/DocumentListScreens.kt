@@ -62,11 +62,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.letsign.mobile.domain.model.Document
 import com.letsign.mobile.domain.model.DocumentStatus
 import com.letsign.mobile.domain.model.SignerStatus
-import com.letsign.mobile.presentation.theme.LetsSignTheme
+import com.letsign.mobile.presentation.theme.EasySignTheme
 import com.letsign.mobile.presentation.ui.components.DocumentStatusChip
 import com.letsign.mobile.presentation.ui.components.EmptyState
 import com.letsign.mobile.presentation.ui.components.ErrorBanner
-import com.letsign.mobile.presentation.ui.components.LetsSignTopAppBar
+import com.letsign.mobile.presentation.ui.components.EasySignTopAppBar
 import com.letsign.mobile.presentation.ui.components.SignerStatusChip
 import com.letsign.mobile.presentation.ui.components.StatusBadge
 import com.letsign.mobile.presentation.ui.components.WebCard
@@ -142,7 +142,7 @@ fun AdminHomeContent(
     if (showTemplates) TemplatesDialog(state.templates, { showTemplates = false; onUseTemplate(it) }, onDeleteTemplate) { showTemplates = false }
     Scaffold(
         topBar = {
-            LetsSignTopAppBar(
+            EasySignTopAppBar(
                 title = "Meus Documentos",
                 subtitle = state.user?.nome,
                 actions = {
@@ -234,7 +234,7 @@ fun SignerHomeContent(
 ) {
     Scaffold(
         topBar = {
-            LetsSignTopAppBar(
+            EasySignTopAppBar(
                 title = "Meus Documentos",
                 subtitle = state.user?.nome,
                 actions = { IconButton(onClick = onLogout) { Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Sair") } }
@@ -481,19 +481,19 @@ private fun TemplatesDialog(templates: List<DocumentTemplate>, onUse: (DocumentT
 
 @ScreenPreviews
 @Composable
-fun AdminHomePreview() = LetsSignTheme {
+fun AdminHomePreview() = EasySignTheme {
     AdminHomeContent(DocumentListUiState(user = PreviewData.admin, documents = PreviewData.documents), {}, {}, {}, {}, {}, {})
 }
 
 @ScreenPreviews
 @Composable
-fun AdminHomeEmptyPreview() = LetsSignTheme {
+fun AdminHomeEmptyPreview() = EasySignTheme {
     AdminHomeContent(DocumentListUiState(user = PreviewData.admin), {}, {}, {}, {}, {}, {})
 }
 
 @ScreenPreviews
 @Composable
-fun AdminHomeOfflinePreview() = LetsSignTheme {
+fun AdminHomeOfflinePreview() = EasySignTheme {
     AdminHomeContent(
         DocumentListUiState(user = PreviewData.admin, documents = PreviewData.documents.take(2), error = "Erro de conexão. Verifique sua internet."),
         {}, {}, {}, {}, {}, {}
@@ -502,12 +502,12 @@ fun AdminHomeOfflinePreview() = LetsSignTheme {
 
 @ScreenPreviews
 @Composable
-fun SignerHomePreview() = LetsSignTheme {
+fun SignerHomePreview() = EasySignTheme {
     SignerHomeContent(DocumentListUiState(user = PreviewData.ana, documents = PreviewData.signerDocuments), {}, {}, {}, {})
 }
 
 @ScreenPreviews
 @Composable
-fun SignerHomeSignedPreview() = LetsSignTheme {
+fun SignerHomeSignedPreview() = EasySignTheme {
     SignerHomeContent(DocumentListUiState(user = PreviewData.ana, documents = PreviewData.signerDocuments, signerTab = SignerTab.SIGNED), {}, {}, {}, {})
 }

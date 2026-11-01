@@ -40,7 +40,7 @@ class PdfTextIndex @Inject constructor(@param:ApplicationContext private val con
             TemplateMatcher.groupLines(words)
         }
     } catch (e: Exception) {
-        Log.w("LetsSign", "Não foi possível ler o texto do PDF", e)
+        Log.w("EasySign", "Não foi possível ler o texto do PDF", e)
         emptyList()
     }
 }

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Check da logo (roxo → azul), usado ao lado do nome EasySign. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path android:pathData="M2,13 L5.2,11.2 L8.8,15.4 L19.5,3 L22.5,4.6 L9.4,20.6 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="2" android:startY="20.6" android:endX="22.5" android:endY="3">
+                <item android:offset="0" android:color="#FF7F56F5" />
+                <item android:offset="1" android:color="#FF5AB4F7" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>
