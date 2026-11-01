@@ -1,4 +1,4 @@
-# Melhorias — LetsSign Android
+# Melhorias — EasySign Android
 
 Análise do app Kotlin em `lets-sign-android/` feita em 25/10/2026.
 

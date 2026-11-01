@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="EasySign">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7F56F5"/>
+      <stop offset="1" stop-color="#3D3E80"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <path transform="translate(97 88) scale(13)" fill="#FFFFFF" d="M2,13 L5.2,11.2 L8.8,15.4 L19.5,3 L22.5,4.6 L9.4,20.6 Z"/>
+  <path d="M150 396 H362" stroke="#FFFFFF" stroke-opacity="0.45" stroke-width="16" stroke-linecap="round"/>
+</svg>

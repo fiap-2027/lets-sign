@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="150" viewBox="0 0 600 150" role="img" aria-label="EasySign">
+  <defs>
+    <linearGradient id="chk" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#7F56F5"/>
+      <stop offset="1" stop-color="#5AB4F7"/>
+    </linearGradient>
+  </defs>
+  <text x="8" y="110" font-family="Poppins, Montserrat, 'Segoe UI', Arial, sans-serif" font-weight="700" font-size="100" letter-spacing="-2" textLength="470" lengthAdjust="spacingAndGlyphs"><tspan fill="#7F56F5">Easy</tspan><tspan fill="#1F2033">Sign</tspan></text>
+  <!-- mesmo "check" inclinado da logo LetsSign, com degradê roxo → azul -->
+  <path transform="translate(480 6) scale(4)" fill="url(#chk)" d="M2,13 L5.2,11.2 L8.8,15.4 L19.5,3 L22.5,4.6 L9.4,20.6 Z"/>
+</svg>

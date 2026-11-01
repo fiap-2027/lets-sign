@@ -1,6 +1,8 @@
 <div align="center">
 
-# ✍️ LetsSign Android
+<img src="docs/logo/easysign-logo.svg" width="360" alt="EasySign">
+
+# EasySign Android
 
 **App nativo Android para preparar, enviar, assinar e acompanhar documentos PDF**
 
@@ -97,6 +99,15 @@ O app funciona **sozinho, sem servidor**: contas, signatários, documentos, assi
 
 > Sem servidor, o "convite" não chega por e-mail: o signatário vê o documento ao entrar no app no mesmo aparelho.
 
+### Dados de demonstração
+
+Na tela de login, toque em **Carregar dados de demonstração**. Em cerca de 20 segundos o app cria um Admin, 6 contatos e 17 documentos em todos os estágios (rascunho, enviado, visualizado, parcialmente assinado, concluído com PDF final, recusado e substituído por nova versão), com datas espalhadas pelos últimos 40 dias. O painel ESG fica no nível Árvore (1.248 folhas). Tocar de novo só entra, sem duplicar.
+
+| Perfil | E-mail | Senha |
+|---|---|---|
+| Admin | `demo@easysign.com` | `demo123` |
+| Signatários | `joao@demo.com`, `mariana@demo.com`, `rafael@demo.com`, `beatriz@demo.com`, `lucas@demo.com`, `fernanda@demo.com` | `demo123` |
+
 ### Modo API (opcional)
 
 Os repositórios seguem interfaces (`domain/repository`), então o mesmo app também fala com o backend REST (`letssign_backend/nodejs_space`, porta 3000), usando o Room como cache:
@@ -111,8 +122,8 @@ Os repositórios seguem interfaces (`domain/repository`), então o mesmo app tam
 ```bash
 ./gradlew assembleDebug               # APK em app/build/outputs/apk/debug/
 ./gradlew installDebug                # instala no aparelho conectado
-./gradlew testDebugUnitTest           # 28 testes unitários
-./gradlew connectedDebugAndroidTest   # 3 testes no emulador: fluxo completo sem servidor e migração do banco
+./gradlew testDebugUnitTest           # 42 testes unitários
+./gradlew connectedDebugAndroidTest   # 9 testes no emulador: fluxo completo sem servidor, dados de demonstração e migração do banco
 ```
 
 ## 🏗️ Arquitetura

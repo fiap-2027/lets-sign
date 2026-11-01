@@ -1,4 +1,4 @@
-# Documentação técnica — LetsSign Android
+# Documentação técnica — EasySign Android
 
 App nativo Android (Kotlin + Jetpack Compose) do desafio **FIAP × LetsSign, Sprint 1**: preparar documentos PDF, escolher signatários, posicionar campos de assinatura, enviar, assinar e acompanhar o processo pelo celular.
 

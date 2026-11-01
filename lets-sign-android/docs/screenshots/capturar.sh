@@ -54,7 +54,7 @@ shot "24-assinatura-concluida"     "$S.sign.SignDocumentScreenKt.SignDocumentDon
 shot "25-visualizador-pdf"         "$S.pdf.PdfViewerScreenKt.PdfViewerPreview" no
 shot "27-nova-versao"              "$S.wizard.NewDocumentScreenKt.WizardNewVersionPreview" no
 shot "28-documento-final"          "$S.wizard.NewDocumentScreenKt.WizardFullPdfPreview" no
-shot "26-area-assinatura"         "$UI.components.SignaturePadKt.SignaturePadSignedPreview" no
+shot "26-area-assinatura"         "$UI.components.SignaturePadKt.DrawSignatureAreaPreview" no
 
 "$ADB" shell cmd uimode night no > /dev/null
 
