@@ -1,5 +1,6 @@
 package com.letsign.mobile.data.local.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -35,7 +36,12 @@ data class DocumentEntity(
     val assinadoEm: String?,
     val possuiDocumentoFinal: Boolean,
     /** Momento (epoch ms) da última sincronização com a API. */
-    val sincronizadoEm: Long
+    val sincronizadoEm: Long,
+    @ColumnInfo(defaultValue = "Documentos") val pasta: String = "Documentos",
+    /** Categorias separadas por quebra de linha. */
+    @ColumnInfo(defaultValue = "") val categorias: String = "",
+    /** Observadores em JSON: [{"id","nome","email"}]. */
+    @ColumnInfo(defaultValue = "[]") val observadores: String = "[]"
 )
 
 @Entity(
@@ -62,7 +68,12 @@ data class ParticipantEntity(
     /** Modo local: imagem da assinatura (PNG em base64), usada para gerar o PDF final. */
     val assinaturaPng: String? = null,
     /** Modo local: dados do gesto da assinatura (JSON), guardados como evidência. */
-    val gestureMetadata: String? = null
+    val gestureMetadata: String? = null,
+    /** Modo local: CPF e nascimento do contato no momento do envio (vão para os campos do PDF). */
+    val signerCpf: String? = null,
+    val signerNascimento: String? = null,
+    /** Modo local: imagem da rubrica (PNG em base64). */
+    val rubricaPng: String? = null
 )
 
 @Entity(
@@ -81,7 +92,8 @@ data class FieldEntity(
     val width: Float,
     val height: Float,
     val required: Boolean,
-    val roleLabel: String
+    val roleLabel: String,
+    @ColumnInfo(defaultValue = "ASSINATURA") val tipo: String = "ASSINATURA"
 )
 
 @Entity(
@@ -143,5 +155,29 @@ data class UserEntity(
     /** Admin que cadastrou este signatário (null para Admin). */
     val adminId: String?,
     val senhaHash: String,
-    val criadoEm: String
+    val criadoEm: String,
+    val cpf: String? = null,
+    val dataNascimento: String? = null
+)
+
+/** Modo local: modelos de documento do Admin. */
+@Entity(tableName = "templates", indices = [Index(value = ["adminId"])])
+data class TemplateEntity(
+    @PrimaryKey val id: String,
+    val adminId: String,
+    val nome: String,
+    val sourceDocumentId: String,
+    val criadoEm: String,
+    /** Layout com âncoras de texto (TemplateLayout em JSON), para posicionar campos em PDFs novos. */
+    val layoutJson: String? = null
+)
+
+/** Modo local: grupos de contatos do Admin. */
+@Entity(tableName = "signer_groups", indices = [Index(value = ["adminId"])])
+data class GroupEntity(
+    @PrimaryKey val id: String,
+    val adminId: String,
+    val nome: String,
+    /** Ids dos contatos separados por vírgula. */
+    val memberIds: String
 )

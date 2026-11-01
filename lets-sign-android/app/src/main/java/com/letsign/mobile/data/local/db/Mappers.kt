@@ -4,6 +4,9 @@ import com.letsign.mobile.domain.model.AuditEvent
 import com.letsign.mobile.domain.model.AuditType
 import com.letsign.mobile.domain.model.Document
 import com.letsign.mobile.domain.model.DocumentStatus
+import com.letsign.mobile.domain.model.DocumentTemplate
+import com.letsign.mobile.domain.model.FieldType
+import com.letsign.mobile.domain.model.SignerGroup
 import com.letsign.mobile.domain.model.LocalPdf
 import com.letsign.mobile.domain.model.Participant
 import com.letsign.mobile.domain.model.PdfKind
@@ -14,6 +17,14 @@ import com.letsign.mobile.domain.model.SignerStatus
 import com.letsign.mobile.domain.model.User
 
 // Conversão API/domínio <-> Room. Enums viram texto; valor desconhecido cai num padrão seguro.
+
+private val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+
+fun List<User>.toObserversJson(): String = json.encodeToString(map { User(id = it.id, nome = it.nome, email = it.email) })
+
+fun observersFromJson(text: String): List<User> = runCatching { json.decodeFromString<List<User>>(text) }.getOrDefault(emptyList())
+
+fun categoriesToText(list: List<String>): String = list.map { it.trim() }.filter { it.isNotEmpty() }.distinct().joinToString("\n")
 
 private inline fun <reified T : Enum<T>> enumOr(value: String?, default: T): T =
     value?.let { v -> enumValues<T>().firstOrNull { it.name == v } } ?: default
@@ -43,7 +54,10 @@ fun Document.toEntity(userId: String, now: Long = System.currentTimeMillis()) = 
     meuPapel = meuPapel?.name,
     assinadoEm = assinadoEm,
     possuiDocumentoFinal = possuiDocumentoFinal || hashFinal != null,
-    sincronizadoEm = now
+    sincronizadoEm = now,
+    pasta = pasta,
+    categorias = categoriesToText(categorias),
+    observadores = observadores.toObserversJson()
 )
 
 /** Ao gravar o resumo da lista, preserva o que só o detalhe traz (ex.: nome do dono). */
@@ -79,7 +93,8 @@ fun SignatureField.toEntity(userId: String, documentId: String) = FieldEntity(
     width = width,
     height = height,
     required = required,
-    roleLabel = roleLabel.name
+    roleLabel = roleLabel.name,
+    tipo = tipo.name
 )
 
 fun AuditEvent.toEntity(userId: String, documentId: String) = AuditEventEntity(
@@ -134,7 +149,10 @@ fun DocumentEntity.toDomain(
     minhaSituacao = minhaSituacao?.let { enumOr(it, SignerStatus.PENDING) },
     meuPapel = meuPapel?.let { enumOr(it, RoleLabel.CONTRATADO) },
     assinadoEm = assinadoEm,
-    possuiDocumentoFinal = possuiDocumentoFinal
+    possuiDocumentoFinal = possuiDocumentoFinal,
+    pasta = pasta,
+    categorias = categorias.split('\n').filter { it.isNotBlank() },
+    observadores = observersFromJson(observadores)
 )
 
 fun ParticipantEntity.toDomain() = Participant(
@@ -150,7 +168,7 @@ fun ParticipantEntity.toDomain() = Participant(
     signedAt = signedAt,
     rejectedAt = rejectedAt,
     motivoRecusa = motivoRecusa,
-    signer = User(id = signerId, nome = signerNome ?: "", email = signerEmail ?: "")
+    signer = User(id = signerId, nome = signerNome ?: "", email = signerEmail ?: "", cpf = signerCpf, dataNascimento = signerNascimento)
 )
 
 fun FieldEntity.toDomain() = SignatureField(
@@ -163,7 +181,8 @@ fun FieldEntity.toDomain() = SignatureField(
     width = width,
     height = height,
     required = required,
-    roleLabel = enumOr(roleLabel, RoleLabel.CONTRATADO)
+    roleLabel = enumOr(roleLabel, RoleLabel.CONTRATADO),
+    tipo = enumOr(tipo, FieldType.ASSINATURA)
 )
 
 fun AuditEventEntity.toDomain() = AuditEvent(
@@ -179,7 +198,14 @@ fun AuditEventEntity.toDomain() = AuditEvent(
 )
 
 fun UserEntity.toDomain() =
-    User(id = id, nome = nome, email = email, telefone = telefone, role = enumOr(role, Role.SIGNER), adminId = adminId, criadoEm = criadoEm)
+    User(
+        id = id, nome = nome, email = email, telefone = telefone, role = enumOr(role, Role.SIGNER), adminId = adminId, criadoEm = criadoEm,
+        cpf = cpf, dataNascimento = dataNascimento
+    )
+
+fun TemplateEntity.toDomain() = DocumentTemplate(id = id, nome = nome, sourceDocumentId = sourceDocumentId, criadoEm = criadoEm)
+
+fun GroupEntity.toDomain() = SignerGroup(id = id, nome = nome, memberIds = memberIds.split(',').filter { it.isNotBlank() })
 
 fun SignerEntity.toDomain() = User(id = id, nome = nome, email = email, telefone = telefone, role = Role.SIGNER, criadoEm = criadoEm)
 

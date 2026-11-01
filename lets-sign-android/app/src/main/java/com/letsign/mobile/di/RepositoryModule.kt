@@ -74,10 +74,11 @@ object RepositoryModule {
         database: AppDatabase,
         tokenManager: TokenManager,
         pdfStorage: PdfStorage,
-        stamper: PdfStamper
+        stamper: PdfStamper,
+        textIndex: com.letsign.mobile.data.pdf.PdfTextIndex
     ): DocumentRepository =
         if (BuildConfig.USE_API) DocumentRepositoryImpl(documentsApi.get(), database.documentDao(), database.pdfFileDao(), tokenManager, pdfStorage)
-        else LocalDocumentRepository(database, tokenManager, pdfStorage, stamper)
+        else LocalDocumentRepository(database, tokenManager, pdfStorage, stamper, textIndex)
 
     @Provides
     fun providePdfImporter(impl: DefaultPdfImporter): PdfImporter = impl

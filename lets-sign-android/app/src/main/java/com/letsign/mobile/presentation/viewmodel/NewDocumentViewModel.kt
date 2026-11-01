@@ -8,6 +8,11 @@ import com.letsign.mobile.data.pdf.PdfImporter
 import com.letsign.mobile.data.pdf.PickedPdf
 import com.letsign.mobile.domain.model.DraftField
 import com.letsign.mobile.domain.model.DraftParticipant
+import com.letsign.mobile.domain.model.Document
+import com.letsign.mobile.domain.model.FieldType
+import com.letsign.mobile.domain.model.SignerGroup
+import com.letsign.mobile.domain.model.DocumentTemplate
+import com.letsign.mobile.domain.model.TemplateMatch
 import com.letsign.mobile.domain.model.PdfKind
 import com.letsign.mobile.domain.model.RoleLabel
 import com.letsign.mobile.domain.model.SendDraft
@@ -42,6 +47,18 @@ sealed interface SendOutcome {
     data class Failure(val mensagem: String) : SendOutcome
 }
 
+/** Modelo aplicado no PDF atual, com o que havia antes (para "Desfazer"). */
+data class AppliedTemplate(
+    val nome: String,
+    val score: Double,
+    val anchored: Int,
+    val total: Int,
+    val missingSigners: Int,
+    val auto: Boolean,
+    val previousParticipants: List<DraftParticipant>,
+    val previousFields: List<DraftField>
+)
+
 data class WizardUiState(
     val step: WizardStep = WizardStep.DADOS,
     /** Continuação de um rascunho que já existe no servidor (título e PDF ficam fixos). */
@@ -51,10 +68,22 @@ data class WizardUiState(
     val isLoading: Boolean = false,
     val loadError: String? = null,
     val titulo: String = "",
+    val pasta: String = Document.DEFAULT_FOLDER,
+    /** Categorias como o usuário digitou (separadas por vírgula). */
+    val categorias: String = "",
     val pdf: PickedPdf? = null,
     val pdfError: String? = null,
     val isImporting: Boolean = false,
     val availableSigners: List<User> = emptyList(),
+    val groups: List<SignerGroup> = emptyList(),
+    val templates: List<DocumentTemplate> = emptyList(),
+    /** Procurando um modelo compatível com o PDF escolhido. */
+    val isMatching: Boolean = false,
+    val appliedTemplate: AppliedTemplate? = null,
+    /** Mensagem depois de salvar o documento enviado como modelo. */
+    val templateSaved: String? = null,
+    /** Tipo do próximo campo a posicionar (lista "campos do signatário" da web). */
+    val newFieldType: FieldType = FieldType.ASSINATURA,
     val participants: List<DraftParticipant> = emptyList(),
     val fields: List<DraftField> = emptyList(),
     val currentPage: Int = 1,
@@ -85,7 +114,16 @@ class NewDocumentViewModel @Inject constructor(
     private val local = MutableStateFlow(WizardUiState())
 
     val uiState: StateFlow<WizardUiState> =
-        combine(local, signerRepository.observeSigners()) { state, signers -> state.copy(availableSigners = signers) }
+        combine(local, signerRepository.observeSigners(), signerRepository.observeGroups(), documentRepository.observeTemplates()) { state, signers, groups, templates ->
+            // O cadastro pode mudar (ex.: CPF incluído em Contatos): os selecionados acompanham.
+            val byId = signers.associateBy { it.id }
+            state.copy(
+                availableSigners = signers,
+                groups = groups,
+                templates = templates,
+                participants = state.participants.map { p -> byId[p.signer.id]?.let { p.copy(signer = it) } ?: p }
+            )
+        }
             .stateIn(viewModelScope, SharingStarted.Eagerly, WizardUiState())
 
     private val state get() = local.value
@@ -98,6 +136,8 @@ class NewDocumentViewModel @Inject constructor(
     // ---- Etapa 1: dados ----
 
     fun setTitle(titulo: String) = local.update { it.copy(titulo = titulo.take(DocumentRules.MAX_TITLE), stepError = null) }
+    fun setFolder(pasta: String) = local.update { it.copy(pasta = pasta.take(60)) }
+    fun setCategories(text: String) = local.update { it.copy(categorias = text.take(200)) }
 
     fun onPdfPicked(uri: Uri) {
         viewModelScope.launch {
@@ -109,12 +149,15 @@ class NewDocumentViewModel @Inject constructor(
                         isImporting = false,
                         pdf = picked,
                         // Título sugerido a partir do nome do arquivo, se ainda estiver vazio.
-                        titulo = s.titulo.ifBlank { picked.displayName.removeSuffix(".pdf").removeSuffix(".PDF") },
+                        titulo = s.titulo.ifBlank { picked.displayName.substringBeforeLast('.') },
                         // Campos de outro PDF podem cair em páginas que não existem: começa do zero.
                         fields = emptyList(),
-                        currentPage = 1
+                        currentPage = 1,
+                        appliedTemplate = null
                     )
                 }
+                // Modelo inteligente: se o PDF parece um modelo salvo, os campos já entram posicionados.
+                if (!state.editMode) matchTemplate(picked.path, templateId = null)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -123,11 +166,66 @@ class NewDocumentViewModel @Inject constructor(
         }
     }
 
+    // ---- Modelos inteligentes ----
+
+    /** Aplica um modelo escolhido pelo usuário no PDF atual (mesmo que a parecença seja baixa). */
+    fun applyTemplate(templateId: String) {
+        val path = state.pdf?.path ?: return
+        matchTemplate(path, templateId)
+    }
+
+    fun undoTemplate() = local.update { s ->
+        val t = s.appliedTemplate ?: return@update s
+        s.copy(participants = t.previousParticipants, fields = t.previousFields, appliedTemplate = null, selectedFieldId = null)
+    }
+
+    private fun matchTemplate(path: String, templateId: String?) {
+        viewModelScope.launch {
+            local.update { it.copy(isMatching = true) }
+            documentRepository.matchTemplate(File(path), templateId)
+                .onSuccess { m -> local.update { s -> if (m == null || m.fields.isEmpty()) s.copy(isMatching = false) else applyMatch(s, m, auto = templateId == null) } }
+                .onFailure { e -> local.update { it.copy(isMatching = false, stepError = if (templateId != null) e.message else null) } }
+        }
+    }
+
+    private fun applyMatch(s: WizardUiState, m: TemplateMatch, auto: Boolean) = s.copy(
+        isMatching = false,
+        participants = m.participants,
+        fields = m.fields,
+        activeSignerId = m.participants.firstOrNull()?.signer?.id,
+        currentPage = m.fields.minOf { it.page },
+        selectedFieldId = null,
+        stepError = null,
+        appliedTemplate = AppliedTemplate(
+            m.template.nome, m.score, m.anchored, m.fields.size, m.missingSigners, auto,
+            previousParticipants = s.appliedTemplate?.previousParticipants ?: s.participants,
+            previousFields = s.appliedTemplate?.previousFields ?: s.fields
+        )
+    )
+
+    /** Depois de enviar: guarda o layout deste documento para reconhecer PDFs parecidos. */
+    fun saveAsTemplate(nome: String) {
+        val id = state.serverDocumentId ?: return
+        viewModelScope.launch {
+            documentRepository.saveAsTemplate(id, nome)
+                .onSuccess { t -> local.update { it.copy(templateSaved = "Modelo \"${t.nome}\" salvo. Ao subir um PDF parecido, os campos entram posicionados sozinhos.") } }
+                .onFailure { e -> local.update { it.copy(templateSaved = e.message) } }
+        }
+    }
+
     // ---- Etapa 2: signatários ----
 
     fun toggleParticipant(user: User) = local.update { s ->
         if (s.participants.any { it.signer.id == user.id }) removeFrom(s, user.id)
         else s.copy(participants = s.participants + DraftParticipant(user), stepError = null)
+    }
+
+    /** Adiciona de uma vez os contatos do grupo que ainda não estão na lista. */
+    fun addGroup(group: SignerGroup) = local.update { s ->
+        val present = s.participants.map { it.signer.id }.toSet()
+        val toAdd = group.memberIds.filter { it !in present }.mapNotNull { id -> s.availableSigners.firstOrNull { it.id == id } }
+        if (toAdd.isEmpty()) s.copy(stepError = "Todos os contatos do grupo \"${group.nome}\" já estão na lista.")
+        else s.copy(participants = s.participants + toAdd.map { DraftParticipant(it) }, stepError = null)
     }
 
     fun setRole(signerId: String, role: RoleLabel) = updateParticipant(signerId) { it.copy(roleLabel = role) }
@@ -162,10 +260,11 @@ class NewDocumentViewModel @Inject constructor(
     fun setPage(page: Int) = local.update { it.copy(currentPage = page.coerceIn(1, it.pageCount.coerceAtLeast(1)), selectedFieldId = null) }
     fun setActiveSigner(signerId: String) = local.update { it.copy(activeSignerId = signerId) }
     fun selectField(localId: String?) = local.update { it.copy(selectedFieldId = localId) }
+    fun setFieldType(tipo: FieldType) = local.update { it.copy(newFieldType = tipo) }
 
     fun addField() = local.update { s ->
         val signerId = s.activeSignerId ?: s.participants.firstOrNull()?.signer?.id ?: return@update s
-        val field = DocumentRules.newField(signerId, s.currentPage, s.fieldsOnPage(s.currentPage).size)
+        val field = DocumentRules.newField(signerId, s.currentPage, s.fieldsOnPage(s.currentPage).size, s.newFieldType)
         s.copy(fields = s.fields + field, selectedFieldId = field.localId, activeSignerId = signerId, stepError = null)
     }
 
@@ -241,6 +340,8 @@ class NewDocumentViewModel @Inject constructor(
                     local.update { it.copy(pdf = it.pdf?.copy(path = f.absolutePath)) }
                 }
             }
+            // Pasta e categorias: o modo API ainda não tem esse recurso; a falha lá não impede o envio.
+            documentRepository.updateOrganization(documentId, s.pasta, DocumentRules.parseCategories(s.categorias))
             val draft = SendDraft(s.participants, s.fields, s.mensagem)
             documentRepository.sendDocument(documentId, draft)
                 .onSuccess { r ->
@@ -282,12 +383,14 @@ class NewDocumentViewModel @Inject constructor(
                 it.copy(
                     isLoading = false,
                     titulo = doc.titulo,
+                    pasta = doc.pasta,
+                    categorias = doc.categorias.joinToString(", "),
                     versao = doc.versao,
                     pdf = pdf,
                     participants = doc.signers.map { p ->
                         DraftParticipant(p.signer ?: User(p.signerId, "Signatário", ""), p.roleLabel, p.required)
                     },
-                    fields = doc.fields.map { f -> DraftField(f.id, f.signerId, f.page, f.x, f.y, f.width, f.height) },
+                    fields = doc.fields.map { f -> DraftField(f.id, f.signerId, f.page, f.x, f.y, f.width, f.height, f.tipo) },
                     mensagem = doc.mensagem.orEmpty()
                 )
             }

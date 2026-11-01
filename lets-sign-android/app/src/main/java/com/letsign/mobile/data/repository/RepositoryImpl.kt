@@ -24,6 +24,9 @@ import com.letsign.mobile.data.local.db.toSignerEntity
 import com.letsign.mobile.data.pdf.PdfStorage
 import com.letsign.mobile.domain.model.ActionResult
 import com.letsign.mobile.domain.model.Document
+import com.letsign.mobile.domain.model.DocumentTemplate
+import com.letsign.mobile.domain.model.SignerGroup
+import kotlinx.coroutines.flow.flowOf
 import com.letsign.mobile.domain.model.LocalPdf
 import com.letsign.mobile.domain.model.PdfKind
 import com.letsign.mobile.domain.model.SendDraft
@@ -180,7 +183,8 @@ class DocumentRepositoryImpl(
         }
     }
 
-    override suspend fun signDocument(id: String, signaturePngBase64: String, gestureMetadata: JsonObject?): Result<ActionResult> =
+    // ponytail: o backend não conhece rubrica; o PDF final dele usa a assinatura em todos os campos.
+    override suspend fun signDocument(id: String, signaturePngBase64: String, gestureMetadata: JsonObject?, rubricaPngBase64: String?): Result<ActionResult> =
         withUser { userId ->
             apiCall(ioDispatcher, "Erro ao assinar documento", {
                 api.signDocument(id, SignRequest(signaturePngBase64, gestureMetadata))
@@ -206,6 +210,16 @@ class DocumentRepositoryImpl(
             file
         }
     }
+
+    // Recursos que o backend REST ainda não tem: disponíveis só no modo local (padrão do app).
+    override suspend fun updateOrganization(id: String, pasta: String, categorias: List<String>): Result<Document> = Result.failure(UnsupportedOperationException("Disponível apenas no modo local."))
+    override suspend fun sendReminder(id: String): Result<ActionResult> = Result.failure(UnsupportedOperationException("Disponível apenas no modo local."))
+    override suspend fun setObservers(id: String, observerIds: List<String>): Result<Document> = Result.failure(UnsupportedOperationException("Disponível apenas no modo local."))
+    override fun observeTemplates(): Flow<List<DocumentTemplate>> = flowOf(emptyList())
+    override suspend fun saveAsTemplate(id: String, nome: String): Result<DocumentTemplate> = Result.failure(UnsupportedOperationException("Disponível apenas no modo local."))
+    override suspend fun deleteTemplate(templateId: String): Result<Unit> = Result.failure(UnsupportedOperationException("Disponível apenas no modo local."))
+    override suspend fun createFromTemplate(templateId: String): Result<Document> = Result.failure(UnsupportedOperationException("Disponível apenas no modo local."))
+    override suspend fun matchTemplate(pdf: File, templateId: String?): Result<com.letsign.mobile.domain.model.TemplateMatch?> = Result.success(null)
 
     private suspend fun saveDetail(userId: String, doc: Document): Document {
         val existing = documentDao.get(userId, doc.id)
@@ -264,14 +278,15 @@ class SignerRepositoryImpl(
         }
     }
 
-    override suspend fun createSigner(nome: String, email: String, telefone: String, senha: String): Result<User> = withUser { userId ->
+    // ponytail: o backend não guarda CPF nem nascimento; ficam só no modo local.
+    override suspend fun createSigner(nome: String, email: String, telefone: String, senha: String, cpf: String, dataNascimento: String): Result<User> = withUser { userId ->
         apiCall(ioDispatcher, "Erro ao cadastrar signatário", {
             api.createSigner(SignerRequest(nome.trim(), email.trim(), telefone.trim(), senha))
         }) { created -> created.also { signerDao.upsert(listOf(it.toSignerEntity(userId))) } }
     }
 
     // senha = null: o PATCH não altera a senha do signatário.
-    override suspend fun updateSigner(id: String, nome: String, email: String, telefone: String, senha: String?): Result<User> =
+    override suspend fun updateSigner(id: String, nome: String, email: String, telefone: String, senha: String?, cpf: String, dataNascimento: String): Result<User> =
         withUser { userId ->
             apiCall(ioDispatcher, "Erro ao atualizar signatário", {
                 api.updateSigner(id, SignerRequest(nome.trim(), email.trim(), telefone.trim(), senha?.ifEmpty { null }))
@@ -281,6 +296,10 @@ class SignerRepositoryImpl(
     override suspend fun deleteSigner(id: String): Result<Unit> = withUser { userId ->
         apiCall(ioDispatcher, "Erro ao excluir signatário", { api.deleteSigner(id) }) { signerDao.delete(userId, id) }
     }
+
+    override fun observeGroups(): Flow<List<SignerGroup>> = flowOf(emptyList())
+    override suspend fun saveGroup(id: String?, nome: String, memberIds: List<String>): Result<SignerGroup> = Result.failure(UnsupportedOperationException("Disponível apenas no modo local."))
+    override suspend fun deleteGroup(id: String): Result<Unit> = Result.failure(UnsupportedOperationException("Disponível apenas no modo local."))
 
     private inline fun <T> withUser(block: (String) -> Result<T>): Result<T> =
         tokenManager.currentUserId()?.let(block) ?: Result.failure(NotLoggedInException())

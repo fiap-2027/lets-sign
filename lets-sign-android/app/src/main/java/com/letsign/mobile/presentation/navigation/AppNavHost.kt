@@ -20,6 +20,7 @@ import com.letsign.mobile.presentation.ui.screens.auth.RegisterScreen
 import com.letsign.mobile.presentation.ui.screens.documents.AdminHomeScreen
 import com.letsign.mobile.presentation.ui.screens.documents.DocumentDetailScreen
 import com.letsign.mobile.presentation.ui.screens.documents.SignerHomeScreen
+import com.letsign.mobile.presentation.ui.screens.esg.EsgScreen
 import com.letsign.mobile.presentation.ui.screens.pdf.PdfViewerScreen
 import com.letsign.mobile.presentation.ui.screens.sign.SignDocumentScreen
 import com.letsign.mobile.presentation.ui.screens.signers.SignersScreen
@@ -37,6 +38,7 @@ object Routes {
     const val SIGNERS = "signers"
     const val SIGN = "sign/{documentId}"
     const val PDF = "pdf/{documentId}/{tipo}"
+    const val ESG = "esg"
 
     fun detail(id: String) = "document/$id"
     fun edit(id: String) = "edit_document/$id"
@@ -86,13 +88,16 @@ fun AppNavHost(session: SessionViewModel = hiltViewModel()) {
                 onNewDocument = { navController.navigate(Routes.NEW) },
                 onOpenDocument = { id -> navController.navigate(Routes.detail(id)) },
                 onOpenSigners = { navController.navigate(Routes.SIGNERS) },
-                onLogout = session::logout
+                onLogout = session::logout,
+                onEditDraft = { id -> navController.navigate(Routes.edit(id)) },
+                onOpenEsg = { navController.navigate(Routes.ESG) }
             )
         }
         composable(Routes.SIGNER_HOME) {
             SignerHomeScreen(
                 onOpenDocument = { id -> navController.navigate(Routes.detail(id)) },
-                onLogout = session::logout
+                onLogout = session::logout,
+                onOpenEsg = { navController.navigate(Routes.ESG) }
             )
         }
         composable(Routes.DETAIL, arguments = documentIdArg) {
@@ -105,6 +110,7 @@ fun AppNavHost(session: SessionViewModel = hiltViewModel()) {
         }
         composable(Routes.NEW) { WizardDestination(navController) }
         composable(Routes.EDIT, arguments = documentIdArg) { WizardDestination(navController) }
+        composable(Routes.ESG) { EsgScreen(onBack = { navController.popBackStack() }) }
         composable(Routes.SIGNERS) {
             SignersScreen(onBack = { navController.popBackStack() })
         }

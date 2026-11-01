@@ -43,7 +43,7 @@ class DocumentRulesTest {
     fun `todo campo pertence a um participante e todo participante tem campo`() {
         val participants = listOf(DraftParticipant(ana), DraftParticipant(joao))
         // João sem campo
-        assertEquals("Posicione pelo menos um campo para João Pereira.", DocumentRules.validateFields(participants, listOf(field(ana)), 2))
+        assertEquals("Posicione pelo menos um campo de assinatura para João Pereira.", DocumentRules.validateFields(participants, listOf(field(ana)), 2))
         // campo de alguém que não é participante
         val intruso = User("u-x", "Intruso", "x@x.com")
         assertNotNull(DocumentRules.validateFields(participants, listOf(field(ana), field(joao), field(intruso)), 2))
@@ -110,5 +110,41 @@ class DocumentRulesTest {
     fun `mensagem do convite tem limite de 2000 caracteres`() {
         assertNull(DocumentRules.validateMessage("a".repeat(2000)))
         assertNotNull(DocumentRules.validateMessage("a".repeat(2001)))
+    }
+
+    @Test
+    fun `cpf e opcional mas, se informado, precisa ser valido`() {
+        assertNull(DocumentRules.validateCpf(""))
+        assertNull(DocumentRules.validateCpf("529.982.247-25"))
+        assertNotNull(DocumentRules.validateCpf("529.982.247-24"))
+        assertNotNull(DocumentRules.validateCpf("111.111.111-11"))
+        assertNotNull(DocumentRules.validateCpf("1234"))
+        assertEquals("529.982.247-25", DocumentRules.formatCpf("52998224725"))
+    }
+
+    @Test
+    fun `data de nascimento e opcional e precisa ser dd-mm-aaaa no passado`() {
+        assertNull(DocumentRules.validateBirthDate(""))
+        assertNull(DocumentRules.validateBirthDate("13/07/1992"))
+        assertNotNull(DocumentRules.validateBirthDate("31/02/1992"))
+        assertNotNull(DocumentRules.validateBirthDate("1992-07-13"))
+        assertNotNull(DocumentRules.validateBirthDate("01/01/2999"))
+    }
+
+    @Test
+    fun `campo cpf exige cpf cadastrado e todo participante precisa de um campo de assinatura`() {
+        val ana = DraftParticipant(User("ana", "Ana Costa", "ana@x.com"))
+        val sig = DocumentRules.newField("ana", 1, 0)
+        val cpf = DocumentRules.newField("ana", 1, 1, com.letsign.mobile.domain.model.FieldType.CPF)
+        assertEquals("Cadastre o CPF de Ana Costa em Contatos para usar o campo CPF.", DocumentRules.validateFields(listOf(ana), listOf(sig, cpf), 1))
+        val comCpf = ana.copy(signer = ana.signer.copy(cpf = "52998224725"))
+        assertNull(DocumentRules.validateFields(listOf(comCpf), listOf(sig, cpf), 1))
+        // só o campo CPF, sem assinatura: não pode
+        assertEquals("Posicione pelo menos um campo de assinatura para Ana Costa.", DocumentRules.validateFields(listOf(comCpf), listOf(cpf), 1))
+    }
+
+    @Test
+    fun `categorias digitadas viram lista sem vazias nem repetidas`() {
+        assertEquals(listOf("RH", "contratos"), DocumentRules.parseCategories(" RH, contratos , ,rh,Contratos"))
     }
 }

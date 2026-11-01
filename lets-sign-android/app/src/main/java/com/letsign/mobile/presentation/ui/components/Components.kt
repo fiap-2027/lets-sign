@@ -1,5 +1,6 @@
 package com.letsign.mobile.presentation.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -71,10 +72,10 @@ fun LetsSignTopAppBar(
         },
         actions = actions,
         colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = MaterialTheme.colorScheme.primary,
-            titleContentColor = MaterialTheme.colorScheme.onPrimary,
-            navigationIconContentColor = MaterialTheme.colorScheme.onPrimary,
-            actionIconContentColor = MaterialTheme.colorScheme.onPrimary
+            containerColor = MaterialTheme.colorScheme.secondary,
+            titleContentColor = MaterialTheme.colorScheme.onSecondary,
+            navigationIconContentColor = MaterialTheme.colorScheme.onSecondary,
+            actionIconContentColor = MaterialTheme.colorScheme.onSecondary
         )
     )
 }
@@ -83,9 +84,10 @@ fun LetsSignTopAppBar(
 fun StatusBadge(
     text: String,
     color: Color = MaterialTheme.colorScheme.primary,
-    textColor: Color = Color.White
+    modifier: Modifier = Modifier
 ) {
-    Surface(color = color, contentColor = textColor, shape = RoundedCornerShape(12.dp)) {
+    // Estilo da web: fundo pastel (cor transparente) + texto na cor do status.
+    Surface(color = color.copy(alpha = 0.12f), contentColor = color, shape = RoundedCornerShape(12.dp), modifier = modifier) {
         Text(
             text = text,
             style = MaterialTheme.typography.labelMedium,
@@ -156,7 +158,7 @@ fun SectionCard(
     trailing: @Composable (() -> Unit)? = null,
     content: @Composable () -> Unit
 ) {
-    Card(modifier = modifier.fillMaxWidth()) {
+    WebCard(modifier = modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(text = title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
@@ -165,6 +167,14 @@ fun SectionCard(
             content()
         }
     }
+}
+
+/** Card branco com borda fina, como os cards da versão web. */
+@Composable
+fun WebCard(modifier: Modifier = Modifier, onClick: (() -> Unit)? = null, content: @Composable () -> Unit) {
+    val border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    if (onClick != null) Card(onClick = onClick, modifier = modifier, border = border) { content() }
+    else Card(modifier = modifier, border = border) { content() }
 }
 
 @Composable

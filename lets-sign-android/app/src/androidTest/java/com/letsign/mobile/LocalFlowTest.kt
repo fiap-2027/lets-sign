@@ -20,6 +20,10 @@ import com.letsign.mobile.domain.model.AuditType
 import com.letsign.mobile.domain.model.DocumentStatus
 import com.letsign.mobile.domain.model.DraftField
 import com.letsign.mobile.domain.model.DraftParticipant
+import com.letsign.mobile.domain.model.FieldType
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.text.PDFTextStripper
 import com.letsign.mobile.domain.model.PdfKind
 import com.letsign.mobile.domain.model.RoleLabel
 import com.letsign.mobile.domain.model.SendDraft
@@ -54,7 +58,7 @@ class LocalFlowTest {
         tokens = TokenManager(context).also { it.clearTokens() }
         auth = LocalAuthRepository(db.userDao(), tokens)
         signers = LocalSignerRepository(db, tokens)
-        docs = LocalDocumentRepository(db, tokens, PdfStorage(context), PdfStamper(context))
+        docs = LocalDocumentRepository(db, tokens, PdfStorage(context), PdfStamper(context), com.letsign.mobile.data.pdf.PdfTextIndex(context))
     }
 
     @After
@@ -137,6 +141,127 @@ class LocalFlowTest {
         loginAs("maria2@teste.com", "senha2")
         assertTrue("versão antiga não pode mais ser assinada", docs.signDocument(v1.id, png(), null).isFailure)
         assertTrue("rascunho da v2 ainda não aparece", docs.getPdf(v2.id, PdfKind.ORIGINAL).isFailure)
+    }
+
+    @Test
+    fun camposExtrasObservadorModeloGrupoELembrete() = runBlocking {
+        auth.register("Ana Admin", "ana3@teste.com", null, "123456").getOrThrow()
+        assertTrue("CPF inválido é recusado", signers.createSigner("X", "x3@teste.com", "11999990000", "senha1", "123.456.789-00").isFailure)
+        val joao = signers.createSigner("João Silva", "joao3@teste.com", "11999998888", "senha1", "529.982.247-25", "13/07/1992").getOrThrow()
+        assertEquals("52998224725", joao.cpf)
+        assertEquals("13/07/1992", joao.dataNascimento)
+        val bia = signers.createSigner("Bia Lima", "bia3@teste.com", "11999996666", "senha3").getOrThrow()
+        assertEquals(2, signers.saveGroup(null, "Diretoria", listOf(joao.id, bia.id)).getOrThrow().memberIds.size)
+
+        val doc = docs.createDocument("Contrato", pdf(1), "contrato.pdf").getOrThrow()
+        val organizado = docs.updateOrganization(doc.id, "Jurídico", listOf("Contratos", "RH")).getOrThrow()
+        assertEquals("Jurídico", organizado.pasta)
+        assertEquals(listOf("Contratos", "RH"), organizado.categorias)
+
+        val fields = FieldType.entries.mapIndexed { i, t -> DraftField("$i", joao.id, 1, 0.05f, 0.05f + i * 0.12f, 0.4f, 0.08f, t) }
+        docs.sendDocument(doc.id, SendDraft(listOf(DraftParticipant(joao)), fields, null)).getOrThrow()
+        assertEquals(listOf(bia.id), docs.setObservers(doc.id, listOf(bia.id)).getOrThrow().observadores.map { it.id })
+        assertTrue("signatário não vira observador", docs.setObservers(doc.id, listOf(joao.id)).isFailure)
+        assertTrue(docs.sendReminder(doc.id).isSuccess)
+        val modelo = docs.saveAsTemplate(doc.id, "Contrato padrão").getOrThrow()
+
+        loginAs("bia3@teste.com", "senha3")
+        val visaoBia = docs.refreshDocument(doc.id).getOrThrow()
+        assertTrue(visaoBia.isObserver)
+        assertFalse("observador não assina", visaoBia.canSign)
+        assertTrue("observador não vê campos", visaoBia.fields.isEmpty())
+        assertEquals(1, docs.observeDocuments().first().size)
+        assertTrue("observador não assina", docs.signDocument(doc.id, png(), null).isFailure)
+
+        loginAs("joao3@teste.com", "senha1")
+        assertEquals(DocumentStatus.COMPLETED, docs.signDocument(doc.id, png(), null, png()).getOrThrow().document.status)
+        val final = docs.getPdf(doc.id, PdfKind.FINAL).getOrThrow()
+        PDFBoxResourceLoader.init(context)
+        val texto = PDDocument.load(final).use { PDFTextStripper().getText(it) }
+        listOf("529.982.247-25", "João Silva", "joao3@teste.com", "ASSINADO ELETRONICAMENTE").forEach {
+            assertTrue("PDF final contém \"$it\"", texto.contains(it))
+        }
+
+        loginAs("bia3@teste.com", "senha3")
+        assertTrue("observador baixa o final", docs.getPdf(doc.id, PdfKind.FINAL).isSuccess)
+
+        loginAs("ana3@teste.com", "123456")
+        assertTrue(docs.refreshDocument(doc.id).getOrThrow().events.any { it.tipo == AuditType.REMINDER })
+        val copia = docs.createFromTemplate(modelo.id).getOrThrow()
+        assertEquals(DocumentStatus.DRAFT, copia.status)
+        assertEquals("Contrato padrão", copia.titulo)
+        assertEquals("Jurídico", copia.pasta)
+        assertEquals(FieldType.entries.toSet(), copia.fields.map { it.tipo }.toSet())
+        assertEquals(SignerStatus.PENDING, copia.signers.single().status)
+    }
+
+    /** Modelo inteligente: um NDA novo, maior, recebe os campos pelo texto âncora; um recibo não é reconhecido. */
+    @Test
+    fun modeloInteligentePosicionaCamposEmPdfNovo() = runBlocking {
+        auth.register("Ana Admin", "ana4@teste.com", null, "123456").getOrThrow()
+        val joao = signers.createSigner("João Silva", "joao4@teste.com", "11999998888", "senha1").getOrThrow()
+        val corpo = listOf(
+            "ACORDO DE CONFIDENCIALIDADE",
+            "As partes concordam em manter sigilo sobre as informações",
+            "confidenciais trocadas durante a vigência deste acordo,",
+            "sob pena de multa contratual e demais sanções legais."
+        )
+        // v1: 2 páginas, bloco de assinatura na página 2 em y = 500 pt.
+        val original = textPdf(listOf(corpo.mapIndexed { i, t -> 80f + i * 30f to t }, listOf(500f to "CONTRATANTE")))
+        val doc = docs.createDocument("NDA Ana", original, "nda.pdf").getOrThrow()
+        val campoY = 520f / 842f
+        docs.sendDocument(doc.id, SendDraft(listOf(DraftParticipant(joao)), listOf(DraftField("1", joao.id, 2, 0.1f, campoY, 0.3f, 0.08f)), null)).getOrThrow()
+        docs.saveAsTemplate(doc.id, "NDA padrão").getOrThrow()
+
+        // NDA de outro cliente: uma página a mais e o bloco de assinatura na página 3, 100 pt mais abaixo.
+        val novo = textPdf(listOf(
+            corpo.mapIndexed { i, t -> 80f + i * 30f to t },
+            listOf(80f to "Cláusula adicional sobre a vigência do acordo"),
+            listOf(600f to "CONTRATANTE")
+        ))
+        val match = docs.matchTemplate(novo).getOrThrow()
+        assertTrue("NDA reconhecido", match != null && match.score >= com.letsign.mobile.domain.rules.TemplateMatcher.MIN_SCORE)
+        val campo = match!!.fields.single()
+        assertEquals("NDA padrão", match.template.nome)
+        assertEquals(joao.id, campo.signerId)
+        assertEquals(1, match.anchored)
+        assertEquals("seguiu o texto para a página 3", 3, campo.page)
+        assertEquals("desceu junto com o texto", campoY + 100f / 842f, campo.y, 0.02f)
+
+        val recibo = textPdf(listOf(listOf(80f to "RECIBO DE PAGAMENTO do aluguel referente ao mês de outubro")))
+        assertEquals("recibo não é reconhecido", null, docs.matchTemplate(recibo).getOrThrow())
+        assertTrue("aplicar à força funciona", docs.matchTemplate(recibo, match.template.id).getOrThrow() != null)
+    }
+
+    /** PDF com linhas de texto de verdade (y em pontos a partir do topo, página A4). */
+    private fun textPdf(pages: List<List<Pair<Float, String>>>): File {
+        val doc = PdfDocument()
+        val paint = Paint().apply { textSize = 12f }
+        pages.forEachIndexed { i, lines ->
+            val page = doc.startPage(PdfDocument.PageInfo.Builder(595, 842, i + 1).create())
+            lines.forEach { (y, text) -> page.canvas.drawText(text, 60f, y, paint) }
+            doc.finishPage(page)
+        }
+        val file = File.createTempFile("texto", ".pdf", context.cacheDir)
+        file.outputStream().use(doc::writeTo)
+        doc.close()
+        return file
+    }
+
+    /** .docx de verdade (ZIP com word/document.xml) vira PDF de várias páginas no aparelho. */
+    @Test
+    fun docxViraPdf() {
+        val body = (1..120).joinToString("") { "<w:p><w:r><w:t>Cláusula $it: texto do contrato para testar a quebra de página.</w:t></w:r></w:p>" }
+        val xml = "<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body>$body</w:body></w:document>"
+        val docx = File.createTempFile("teste", ".docx", context.cacheDir)
+        java.util.zip.ZipOutputStream(docx.outputStream()).use { z ->
+            z.putNextEntry(java.util.zip.ZipEntry("word/document.xml"))
+            z.write(xml.toByteArray())
+            z.closeEntry()
+        }
+        val pdf = File.createTempFile("convertido", ".pdf", context.cacheDir)
+        com.letsign.mobile.data.pdf.DocxConverter.writePdf(docx.inputStream().use(com.letsign.mobile.data.pdf.DocxConverter::paragraphs), pdf)
+        assertTrue("120 parágrafos ocupam mais de uma página", PdfDocumentRenderer.inspect(pdf).pageCount > 1)
     }
 
     private suspend fun loginAs(email: String, senha: String) {

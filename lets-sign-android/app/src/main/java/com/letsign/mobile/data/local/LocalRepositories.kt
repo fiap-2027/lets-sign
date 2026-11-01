@@ -7,6 +7,11 @@ import com.letsign.mobile.data.local.db.AppDatabase
 import com.letsign.mobile.data.local.db.AuditEventEntity
 import com.letsign.mobile.data.local.db.DocumentEntity
 import com.letsign.mobile.data.local.db.FieldEntity
+import com.letsign.mobile.data.local.db.GroupEntity
+import com.letsign.mobile.data.local.db.TemplateEntity
+import com.letsign.mobile.data.local.db.categoriesToText
+import com.letsign.mobile.data.local.db.observersFromJson
+import com.letsign.mobile.data.local.db.toObserversJson
 import com.letsign.mobile.data.local.db.ParticipantEntity
 import com.letsign.mobile.data.local.db.PdfFileEntity
 import com.letsign.mobile.data.local.db.UserDao
@@ -23,6 +28,18 @@ import com.letsign.mobile.domain.model.ActionResult
 import com.letsign.mobile.domain.model.AuditType
 import com.letsign.mobile.domain.model.Document
 import com.letsign.mobile.domain.model.DocumentStatus
+import com.letsign.mobile.domain.model.DocumentTemplate
+import com.letsign.mobile.domain.model.FieldType
+import com.letsign.mobile.domain.model.SignerGroup
+import com.letsign.mobile.domain.model.DraftField
+import com.letsign.mobile.domain.model.DraftParticipant
+import com.letsign.mobile.domain.model.RoleLabel
+import com.letsign.mobile.domain.model.TemplateMatch
+import com.letsign.mobile.domain.rules.LayoutField
+import com.letsign.mobile.domain.rules.LayoutSlot
+import com.letsign.mobile.domain.rules.TemplateLayout
+import com.letsign.mobile.domain.rules.TemplateMatcher
+import com.letsign.mobile.presentation.util.formatDateTime
 import com.letsign.mobile.domain.model.LocalPdf
 import com.letsign.mobile.domain.model.PdfKind
 import com.letsign.mobile.domain.model.Role
@@ -179,27 +196,32 @@ class LocalSignerRepository(private val database: AppDatabase, private val token
 
     override suspend fun refreshSigners(): Result<Unit> = Result.success(Unit)
 
-    override suspend fun createSigner(nome: String, email: String, telefone: String, senha: String): Result<User> =
+    override suspend fun createSigner(nome: String, email: String, telefone: String, senha: String, cpf: String, dataNascimento: String): Result<User> =
         local("Erro ao cadastrar signatário") {
             val admin = users.requireAdmin(tokenManager)
-            DocumentRules.validateSigner(nome, email, telefone, senha, isNew = true)?.let(::fail)
+            DocumentRules.validateSigner(nome, email, telefone, senha, isNew = true, cpf, dataNascimento)?.let(::fail)
             val mail = email.trim().lowercase()
             if (users.findByEmail(mail) != null) fail(EMAIL_IN_USE)
-            val signer = UserEntity(newId(), nome.trim(), mail, telefone.trim(), Role.SIGNER.name, admin.id, PasswordHasher.hash(senha), isoNow())
+            val signer = UserEntity(
+                newId(), nome.trim(), mail, telefone.trim(), Role.SIGNER.name, admin.id, PasswordHasher.hash(senha), isoNow(),
+                cpf.filter(Char::isDigit).ifEmpty { null }, dataNascimento.trim().ifEmpty { null }
+            )
             users.upsert(signer)
             signer.toDomain()
         }
 
-    override suspend fun updateSigner(id: String, nome: String, email: String, telefone: String, senha: String?): Result<User> =
+    override suspend fun updateSigner(id: String, nome: String, email: String, telefone: String, senha: String?, cpf: String, dataNascimento: String): Result<User> =
         local("Erro ao atualizar signatário") {
             val signer = ownedSigner(id)
-            DocumentRules.validateSigner(nome, email, telefone, senha.orEmpty(), isNew = false)?.let(::fail)
+            DocumentRules.validateSigner(nome, email, telefone, senha.orEmpty(), isNew = false, cpf, dataNascimento)?.let(::fail)
             val mail = email.trim().lowercase()
             users.findByEmail(mail)?.let { if (it.id != id) fail(EMAIL_IN_USE) }
             val updated = signer.copy(
                 nome = nome.trim(),
                 email = mail,
                 telefone = telefone.trim(),
+                cpf = cpf.filter(Char::isDigit).ifEmpty { null },
+                dataNascimento = dataNascimento.trim().ifEmpty { null },
                 senhaHash = senha?.ifEmpty { null }?.let(PasswordHasher::hash) ?: signer.senhaHash
             )
             users.upsert(updated)
@@ -212,6 +234,35 @@ class LocalSignerRepository(private val database: AppDatabase, private val token
             fail("Este signatário já está vinculado a documentos e não pode ser removido.")
         }
         users.delete(id)
+        // Sai também dos grupos em que estava.
+        val admin = users.requireAdmin(tokenManager)
+        orgs.observeGroups(admin.id).first().filter { id in it.memberIds.split(',') }.forEach { g ->
+            orgs.upsertGroup(g.copy(memberIds = g.memberIds.split(',').filter { it != id }.joinToString(",")))
+        }
+    }
+
+    // ---- Grupos de contatos ----
+
+    private val orgs = database.orgDao()
+
+    override fun observeGroups(): Flow<List<SignerGroup>> =
+        tokenManager.currentUser.perUser(emptyList()) { adminId -> orgs.observeGroups(adminId).map { list -> list.map { it.toDomain() } } }
+
+    override suspend fun saveGroup(id: String?, nome: String, memberIds: List<String>): Result<SignerGroup> = local("Erro ao salvar grupo") {
+        val admin = users.requireAdmin(tokenManager)
+        if (nome.isBlank()) fail("Informe o nome do grupo.")
+        if (memberIds.isEmpty()) fail("Escolha pelo menos um contato para o grupo.")
+        if (memberIds.any { users.get(it)?.adminId != admin.id }) fail("Um ou mais contatos não existem ou não pertencem a você.")
+        val existing = id?.let { orgs.getGroup(it)?.takeIf { g -> g.adminId == admin.id } ?: fail("Grupo não encontrado.") }
+        val group = GroupEntity(existing?.id ?: newId(), admin.id, nome.trim(), memberIds.distinct().joinToString(","))
+        orgs.upsertGroup(group)
+        group.toDomain()
+    }
+
+    override suspend fun deleteGroup(id: String): Result<Unit> = local("Erro ao excluir grupo") {
+        val admin = users.requireAdmin(tokenManager)
+        orgs.getGroup(id)?.takeIf { it.adminId == admin.id } ?: fail("Grupo não encontrado.")
+        orgs.deleteGroup(id)
     }
 
     private suspend fun ownedSigner(id: String): UserEntity {
@@ -224,7 +275,8 @@ class LocalDocumentRepository(
     private val database: AppDatabase,
     private val tokenManager: TokenManager,
     private val pdfStorage: PdfStorage,
-    private val stamper: PdfStamper
+    private val stamper: PdfStamper,
+    private val textIndex: com.letsign.mobile.data.pdf.PdfTextIndex
 ) : DocumentRepository {
 
     private val docs = database.documentDao()
@@ -332,7 +384,7 @@ class LocalDocumentRepository(
             val participants = docs.getParticipants(LOCAL, id).map {
                 it.copy(
                     id = newId(), documentId = newId, status = SignerStatus.PENDING.name, invitedAt = null, viewedAt = null,
-                    signedAt = null, rejectedAt = null, motivoRecusa = null, assinaturaPng = null, gestureMetadata = null
+                    signedAt = null, rejectedAt = null, motivoRecusa = null, assinaturaPng = null, gestureMetadata = null, rubricaPng = null
                 )
             }
             val fields = docs.getFields(LOCAL, id).filter { it.page <= pages }.map { it.copy(id = newId(), documentId = newId) }
@@ -366,6 +418,8 @@ class LocalDocumentRepository(
         val signers = draft.participants.map { p ->
             users.get(p.signer.id)?.takeIf { it.adminId == me.id } ?: fail("Um ou mais signatários não existem ou não pertencem a você.")
         }
+        // Revalida com o cadastro atual (ex.: CPF apagado depois de montar o rascunho).
+        DocumentRules.validateFields(draft.participants.mapIndexed { i, p -> p.copy(signer = signers[i].toDomain()) }, draft.fields, doc.totalPaginas)?.let(::fail)
         val roleOf = draft.participants.associate { it.signer.id to it.roleLabel.name }
         val now = isoNow()
         database.withTransaction {
@@ -376,11 +430,11 @@ class LocalDocumentRepository(
                     userId = LOCAL, id = newId(), documentId = id, signerId = signers[i].id, signerNome = signers[i].nome,
                     signerEmail = signers[i].email, status = SignerStatus.PENDING.name, roleLabel = p.roleLabel.name,
                     required = p.required, ordem = i, invitedAt = now, viewedAt = null, signedAt = null, rejectedAt = null,
-                    motivoRecusa = null
+                    motivoRecusa = null, signerCpf = signers[i].cpf, signerNascimento = signers[i].dataNascimento
                 )
             })
             docs.upsertFields(draft.fields.map { f ->
-                FieldEntity(LOCAL, newId(), id, f.signerId, f.page, f.x, f.y, f.width, f.height, true, roleOf.getValue(f.signerId))
+                FieldEntity(LOCAL, newId(), id, f.signerId, f.page, f.x, f.y, f.width, f.height, true, roleOf.getValue(f.signerId), f.tipo.name)
             })
             docs.upsertDocuments(listOf(doc.copy(
                 status = DocumentStatus.PENDING.name, enviadoEm = now, atualizadoEm = now, mensagem = mensagem,
@@ -391,13 +445,11 @@ class LocalDocumentRepository(
         SendResult(false, "Documento enviado. Os signatários encontram o convite ao entrar no app.", load(id))
     }
 
-    override suspend fun signDocument(id: String, signaturePngBase64: String, gestureMetadata: JsonObject?): Result<ActionResult> =
+    override suspend fun signDocument(id: String, signaturePngBase64: String, gestureMetadata: JsonObject?, rubricaPngBase64: String?): Result<ActionResult> =
         local("Erro ao assinar documento") {
             val me = users.requireUser(tokenManager)
-            val png = signaturePngBase64.replace(Regex("^data:image/[a-z]+;base64,", RegexOption.IGNORE_CASE), "").replace(Regex("\\s"), "")
-            val bytes = runCatching { Base64.decode(png, Base64.DEFAULT) }.getOrNull()
-            if (bytes == null || bytes.size < 8 || bytes.copyOf(8).hex() != "89504e470d0a1a0a") fail("A imagem da assinatura deve ser um PNG válido.")
-            if (bytes.size > 2 * 1024 * 1024) fail("A imagem da assinatura deve ter no máximo 2 MB.")
+            val png = validPng(signaturePngBase64, "assinatura")
+            val rubrica = rubricaPngBase64?.let { validPng(it, "rubrica") }
 
             val concluido = database.withTransaction {
                 val (doc, mine) = invitation(id, me)
@@ -408,7 +460,7 @@ class LocalDocumentRepository(
                 val now = isoNow()
                 val signed = mine.copy(
                     status = SignerStatus.SIGNED.name, signedAt = now, viewedAt = mine.viewedAt ?: now,
-                    assinaturaPng = png, gestureMetadata = gestureMetadata?.toString()
+                    assinaturaPng = png, gestureMetadata = gestureMetadata?.toString(), rubricaPng = rubrica
                 )
                 val all = docs.getParticipants(LOCAL, id).map { if (it.id == signed.id) signed else it }
                 // Regra: só conclui quando todos os signatários obrigatórios assinaram.
@@ -448,7 +500,159 @@ class LocalDocumentRepository(
             ?: fail("O arquivo deste documento não foi encontrado no aparelho.")
     }
 
+    override suspend fun updateOrganization(id: String, pasta: String, categorias: List<String>): Result<Document> = local("Erro ao salvar") {
+        val me = users.requireAdmin(tokenManager)
+        val doc = owned(id, me)
+        val folder = pasta.trim().ifEmpty { Document.DEFAULT_FOLDER }
+        if (folder.length > 60) fail("O nome da pasta deve ter no máximo 60 caracteres.")
+        docs.upsertDocuments(listOf(doc.copy(pasta = folder, categorias = categoriesToText(categorias))))
+        load(id)
+    }
+
+    override suspend fun sendReminder(id: String): Result<ActionResult> = local("Erro ao enviar lembrete") {
+        val me = users.requireAdmin(tokenManager)
+        val doc = owned(id, me)
+        if (doc.status != DocumentStatus.PENDING.name && doc.status != DocumentStatus.PARTIALLY_SIGNED.name) {
+            fail("Só há lembrete para documentos aguardando assinatura.")
+        }
+        val pending = docs.getParticipants(LOCAL, id).filter { it.status == SignerStatus.PENDING.name || it.status == SignerStatus.VIEWED.name }
+        if (pending.isEmpty()) fail("Todos os signatários já responderam.")
+        event(doc, AuditType.REMINDER, me, "Lembrete enviado para ${pending.joinToString { it.signerNome.orEmpty() }}.")
+        ActionResult("Lembrete registrado para ${pending.size} signatário(s). Eles veem o documento pendente ao entrar no app.", load(id))
+    }
+
+    override suspend fun setObservers(id: String, observerIds: List<String>): Result<Document> = local("Erro ao salvar permissões") {
+        val me = users.requireAdmin(tokenManager)
+        val doc = owned(id, me)
+        val signerIds = docs.getParticipants(LOCAL, id).map { it.signerId }.toSet()
+        val observers = observerIds.distinct().map { oid ->
+            users.get(oid)?.takeIf { it.adminId == me.id }?.toDomain() ?: fail("Contato não encontrado.")
+        }
+        observers.firstOrNull { it.id in signerIds }?.let { fail("${it.nome} já é signatário deste documento.") }
+        val before = observersFromJson(doc.observadores).map { it.id }.toSet()
+        database.withTransaction {
+            docs.upsertDocuments(listOf(doc.copy(observadores = observers.toObserversJson())))
+            observers.filter { it.id !in before }.forEach { event(doc, AuditType.OTHER, me, "${it.nome} pode acompanhar o documento.") }
+            before.filter { b -> observers.none { it.id == b } }.forEach { b ->
+                event(doc, AuditType.OTHER, me, "${observersFromJson(doc.observadores).first { it.id == b }.nome} não acompanha mais o documento.")
+            }
+        }
+        load(id)
+    }
+
+    override fun observeTemplates(): Flow<List<DocumentTemplate>> =
+        tokenManager.currentUser.perUser(emptyList()) { me -> orgs.observeTemplates(me).map { list -> list.map { it.toDomain() } } }
+
+    override suspend fun saveAsTemplate(id: String, nome: String): Result<DocumentTemplate> = local("Erro ao salvar modelo") {
+        val me = users.requireAdmin(tokenManager)
+        owned(id, me)
+        if (nome.isBlank()) fail("Informe o nome do modelo.")
+        val layout = buildLayout(id) ?: fail("Posicione os campos e envie o documento antes de salvar como modelo.")
+        val template = TemplateEntity(newId(), me.id, nome.trim().take(DocumentRules.MAX_TITLE), id, isoNow(), layoutJ.encodeToString(layout))
+        orgs.upsertTemplate(template)
+        template.toDomain()
+    }
+
+    override suspend fun deleteTemplate(templateId: String): Result<Unit> = local("Erro ao excluir modelo") {
+        val me = users.requireAdmin(tokenManager)
+        orgs.getTemplate(templateId)?.takeIf { it.adminId == me.id } ?: fail("Modelo não encontrado.")
+        orgs.deleteTemplate(templateId)
+    }
+
+    /** Copia o PDF original, os signatários e os campos do documento de origem para um rascunho novo. */
+    override suspend fun createFromTemplate(templateId: String): Result<Document> = local("Erro ao usar o modelo") {
+        val me = users.requireAdmin(tokenManager)
+        val template = orgs.getTemplate(templateId)?.takeIf { it.adminId == me.id } ?: fail("Modelo não encontrado.")
+        val source = owned(template.sourceDocumentId, me)
+        val pdf = files.get(LOCAL, source.id, PdfKind.ORIGINAL.apiValue, source.versao)?.let { File(it.caminho) }?.takeIf { it.exists() }
+            ?: fail("O PDF deste modelo não está mais no aparelho.")
+        val newId = newId()
+        val now = isoNow()
+        val doc = source.copy(
+            id = newId, titulo = template.nome, status = DocumentStatus.DRAFT.name, versao = 1, criadoEm = now, enviadoEm = null,
+            concluidoEm = null, atualizadoEm = now, hashFinal = null, assinados = 0, possuiDocumentoFinal = false, mensagem = null
+        )
+        // Contatos excluídos depois de salvar o modelo ficam de fora.
+        val participants = docs.getParticipants(LOCAL, source.id).filter { users.get(it.signerId) != null }.map {
+            it.copy(
+                id = newId(), documentId = newId, status = SignerStatus.PENDING.name, invitedAt = null, viewedAt = null, signedAt = null,
+                rejectedAt = null, motivoRecusa = null, assinaturaPng = null, gestureMetadata = null, rubricaPng = null
+            )
+        }
+        val keep = participants.map { it.signerId }.toSet()
+        val fields = docs.getFields(LOCAL, source.id).filter { it.signerId in keep }.map { it.copy(id = newId(), documentId = newId) }
+        val file = pdfStorage.save(LOCAL, newId, PdfKind.ORIGINAL.apiValue, 1, pdf.readBytes())
+        database.withTransaction {
+            docs.upsertDocuments(listOf(doc))
+            docs.upsertParticipants(participants)
+            docs.upsertFields(fields)
+            registerFile(doc, PdfKind.ORIGINAL, file, source.nomeArquivo)
+            event(doc, AuditType.CREATED, me, "Documento \"${doc.titulo}\" criado a partir do modelo \"${template.nome}\".")
+        }
+        load(newId)
+    }
+
+    override suspend fun matchTemplate(pdf: File, templateId: String?): Result<TemplateMatch?> = local("Erro ao aplicar o modelo") {
+        val me = users.requireAdmin(tokenManager)
+        val templates = if (templateId != null) listOf(orgs.getTemplate(templateId)?.takeIf { it.adminId == me.id } ?: fail("Modelo não encontrado."))
+        else orgs.observeTemplates(me.id).first()
+        if (templates.isEmpty()) return@local null
+        val pageCount = PdfDocumentRenderer.inspect(pdf).pageCount
+        val lines = textIndex.lines(pdf)
+        val scored = templates.mapNotNull { t -> layoutOf(t)?.let { l -> Triple(t, l, TemplateMatcher.score(l, lines, pageCount)) } }
+        val (template, layout, score) = (
+            if (templateId != null) scored.firstOrNull()
+            else scored.filter { it.third >= TemplateMatcher.MIN_SCORE }.maxByOrNull { it.third }
+        ) ?: return@local null
+        // Contatos excluídos depois de salvar o modelo ficam de fora (com os campos deles).
+        val signers = layout.slots.map { s -> users.get(s.signerId)?.takeIf { it.adminId == me.id }?.toDomain() }
+        val placed = TemplateMatcher.place(layout, lines, pageCount).filter { signers.getOrNull(it.slot) != null }
+        TemplateMatch(
+            template = template.toDomain(),
+            score = score,
+            participants = layout.slots.mapIndexedNotNull { i, s -> signers[i]?.let { DraftParticipant(it, s.roleLabel, s.required) } },
+            fields = placed.map { p -> DraftField(newId(), signers[p.slot]!!.id, p.page, p.x, p.y, p.w, p.h, p.tipo) },
+            anchored = placed.count { it.anchored },
+            missingSigners = signers.count { it == null }
+        )
+    }
+
     // ---- internos ----
+
+    private val layoutJ = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+
+    /** Layout salvo do modelo; modelos antigos (sem layout) são calculados agora a partir do documento de origem e guardados. */
+    private suspend fun layoutOf(t: TemplateEntity): TemplateLayout? =
+        t.layoutJson?.let { runCatching { layoutJ.decodeFromString<TemplateLayout>(it) }.getOrNull() }
+            ?: buildLayout(t.sourceDocumentId)?.also { orgs.upsertTemplate(t.copy(layoutJson = layoutJ.encodeToString(it))) }
+
+    /** Campos e signatários do documento + âncoras de texto do PDF original. Null se não há campos. */
+    private suspend fun buildLayout(documentId: String): TemplateLayout? {
+        val doc = docs.get(LOCAL, documentId) ?: return null
+        val participants = docs.getParticipants(LOCAL, documentId)
+        val fields = docs.getFields(LOCAL, documentId)
+        if (fields.isEmpty() || participants.isEmpty()) return null
+        val original = files.get(LOCAL, documentId, PdfKind.ORIGINAL.apiValue, doc.versao)?.let { File(it.caminho) }?.takeIf { it.exists() }
+        val lines = original?.let(textIndex::lines).orEmpty()
+        val slots = participants.map { p ->
+            LayoutSlot(p.signerId, RoleLabel.entries.firstOrNull { it.name == p.roleLabel } ?: RoleLabel.CONTRATADO, p.required)
+        }
+        val layoutFields = fields.mapNotNull { f ->
+            val slot = participants.indexOfFirst { it.signerId == f.signerId }.takeIf { it >= 0 } ?: return@mapNotNull null
+            LayoutField(slot, FieldType.entries.firstOrNull { it.name == f.tipo } ?: FieldType.ASSINATURA, f.page, f.x, f.y, f.width, f.height)
+        }
+        return TemplateMatcher.build(slots, layoutFields, lines, doc.totalPaginas)
+    }
+
+    private val orgs = database.orgDao()
+
+    private fun validPng(base64: String, what: String): String {
+        val png = base64.replace(Regex("^data:image/[a-z]+;base64,", RegexOption.IGNORE_CASE), "").replace(Regex("\\s"), "")
+        val bytes = runCatching { Base64.decode(png, Base64.DEFAULT) }.getOrNull()
+        if (bytes == null || bytes.size < 8 || bytes.copyOf(8).hex() != "89504e470d0a1a0a") fail("A imagem da $what deve ser um PNG válido.")
+        if (bytes.size > 2 * 1024 * 1024) fail("A imagem da $what deve ter no máximo 2 MB.")
+        return png
+    }
 
     /** Documento como o usuário logado o vê; falha se não existe ou se ele não tem acesso. */
     private suspend fun load(id: String): Document = observeDocument(id).first() ?: fail("Documento não encontrado.")
@@ -472,10 +676,22 @@ class LocalDocumentRepository(
         val doc = docs.get(LOCAL, id) ?: return
         val participants = docs.getParticipants(LOCAL, id).filter { it.status == SignerStatus.SIGNED.name && it.assinaturaPng != null }
         val pngs = participants.associate { it.signerId to Base64.decode(it.assinaturaPng.orEmpty(), Base64.DEFAULT) }
+        val rubricas = participants.filter { it.rubricaPng != null }.associate { it.signerId to Base64.decode(it.rubricaPng, Base64.DEFAULT) }
         val bySigner = participants.associateBy { it.signerId }
         val stamps = docs.getFields(LOCAL, id).mapNotNull { f ->
             val p = bySigner[f.signerId] ?: return@mapNotNull null
-            Stamp(f.page, f.x, f.y, f.width, f.height, pngs.getValue(f.signerId), "${p.signerNome} - ${p.roleLabel} - ${p.signedAt}")
+            val nome = p.signerNome.orEmpty()
+            val quando = formatDateTime(p.signedAt)
+            fun text(vararg lines: String, boxed: Boolean = false) = Stamp(f.page, f.x, f.y, f.width, f.height, null, "", lines.toList(), boxed)
+            when (FieldType.entries.firstOrNull { it.name == f.tipo } ?: FieldType.ASSINATURA) {
+                FieldType.ASSINATURA -> Stamp(f.page, f.x, f.y, f.width, f.height, pngs.getValue(f.signerId), "$nome - ${p.roleLabel} - ${p.signedAt}")
+                FieldType.RUBRICA -> Stamp(f.page, f.x, f.y, f.width, f.height, rubricas[f.signerId] ?: pngs.getValue(f.signerId), "")
+                FieldType.CARIMBO -> text("ASSINADO ELETRONICAMENTE", nome, quando, "LetsSign", boxed = true)
+                FieldType.NOME -> text(nome)
+                FieldType.EMAIL -> text(p.signerEmail.orEmpty())
+                FieldType.CPF -> text(DocumentRules.formatCpf(p.signerCpf))
+                FieldType.DATA -> text(quando)
+            }
         }
         val original = File(files.get(LOCAL, id, PdfKind.ORIGINAL.apiValue, doc.versao)?.caminho ?: return)
         val footer = "LetsSign - documento ${doc.id} v${doc.versao} - hash original SHA-256 ${doc.hashSha256}"
@@ -506,14 +722,19 @@ class LocalDocumentRepository(
         ))
 
     private fun canAccess(doc: DocumentEntity, participants: List<ParticipantEntity>, me: String) =
-        doc.ownerId == me || (doc.status != DocumentStatus.DRAFT.name && participants.any { it.signerId == me })
+        doc.ownerId == me || (doc.status != DocumentStatus.DRAFT.name &&
+            (participants.any { it.signerId == me } || observersFromJson(doc.observadores).any { it.id == me }))
 
     /** Campos que dependem de quem está vendo (o backend calcula o mesmo no detalhe e na lista). */
     private fun Document.forViewer(me: String, mine: ParticipantEntity?): Document {
         val isOwner = ownerId == me
         val my = mine?.toDomain()
         return copy(
-            papel = if (isOwner) "OWNER" else "SIGNER",
+            papel = when {
+                isOwner -> "OWNER"
+                my != null -> "SIGNER"
+                else -> "OBSERVER"
+            },
             minhaSituacao = my?.status,
             meuPapel = my?.roleLabel,
             assinadoEm = my?.signedAt,

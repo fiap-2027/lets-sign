@@ -29,10 +29,11 @@ interface DocumentDao {
 
     // ---- Modo local ----
 
-    /** Documentos que [viewerId] pode ver: os que criou e os que foram enviados para ele (rascunho nunca). */
+    /** Documentos que [viewerId] pode ver: os que criou e os enviados para ele, como signatário ou observador (rascunho nunca). */
     @Query(
-        """SELECT * FROM documents WHERE userId = :userId AND (ownerId = :viewerId OR (status != 'DRAFT' AND id IN
-           (SELECT documentId FROM participants WHERE userId = :userId AND signerId = :viewerId)))
+        """SELECT * FROM documents WHERE userId = :userId AND (ownerId = :viewerId OR (status != 'DRAFT' AND (id IN
+           (SELECT documentId FROM participants WHERE userId = :userId AND signerId = :viewerId)
+           OR observadores LIKE '%"' || :viewerId || '"%')))
            ORDER BY COALESCE(atualizadoEm, criadoEm) DESC"""
     )
     fun observeVisible(userId: String, viewerId: String): Flow<List<DocumentEntity>>
@@ -173,4 +174,32 @@ interface UserDao {
 
     @Query("DELETE FROM users WHERE id = :id")
     suspend fun delete(id: String)
+}
+
+/** Modo local: modelos e grupos de contatos do Admin. */
+@Dao
+interface OrgDao {
+    @Query("SELECT * FROM templates WHERE adminId = :adminId ORDER BY nome COLLATE NOCASE")
+    fun observeTemplates(adminId: String): Flow<List<TemplateEntity>>
+
+    @Query("SELECT * FROM templates WHERE id = :id")
+    suspend fun getTemplate(id: String): TemplateEntity?
+
+    @Upsert
+    suspend fun upsertTemplate(template: TemplateEntity)
+
+    @Query("DELETE FROM templates WHERE id = :id")
+    suspend fun deleteTemplate(id: String)
+
+    @Query("SELECT * FROM signer_groups WHERE adminId = :adminId ORDER BY nome COLLATE NOCASE")
+    fun observeGroups(adminId: String): Flow<List<GroupEntity>>
+
+    @Query("SELECT * FROM signer_groups WHERE id = :id")
+    suspend fun getGroup(id: String): GroupEntity?
+
+    @Upsert
+    suspend fun upsertGroup(group: GroupEntity)
+
+    @Query("DELETE FROM signer_groups WHERE id = :id")
+    suspend fun deleteGroup(id: String)
 }

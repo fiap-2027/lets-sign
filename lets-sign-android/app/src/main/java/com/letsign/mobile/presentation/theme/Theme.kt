@@ -12,58 +12,79 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
+// Paleta da versão web do LetsSign: roxo (botões/abas), azul-marinho (sidebar), fundo #FAFAFC.
 private val LightColorScheme = lightColorScheme(
-    primary = Color(0xFFC2185B),
-    primaryContainer = Color(0xFFFCE4EC),
-    secondary = Color(0xFF3F51B5),
-    secondaryContainer = Color(0xFFE8EAF6),
-    onSecondaryContainer = Color(0xFF1A237E),
-    tertiary = Color(0xFF009688),
-    tertiaryContainer = Color(0xFFE0F2F1),
-    surface = Color(0xFFFFFFFF),
-    background = Color(0xFFF5F5F5),
+    primary = Color(0xFF7F56F5),
     onPrimary = Color.White,
+    primaryContainer = Color(0xFFF2EEFF),
+    onPrimaryContainer = Color(0xFF3B2585),
+    secondary = Color(0xFF3D3E80),
     onSecondary = Color.White,
+    secondaryContainer = Color(0xFFECEDFA),
+    onSecondaryContainer = Color(0xFF24254E),
+    tertiary = Color(0xFF2E9E6A),
     onTertiary = Color.White,
-    onSurface = Color(0xFF1D1D1D),
-    onSurfaceVariant = Color(0xFF616161),
-    onBackground = Color(0xFF1D1D1D),
+    tertiaryContainer = Color(0xFFECF6ED),
+    onTertiaryContainer = Color(0xFF1B5E3F),
+    background = Color(0xFFFAFAFC),
+    onBackground = Color(0xFF1F2133),
+    surface = Color(0xFFFFFFFF),
+    onSurface = Color(0xFF1F2133),
+    surfaceVariant = Color(0xFFF3F3F7),
+    onSurfaceVariant = Color(0xFF6B6E80),
+    surfaceContainerLowest = Color(0xFFFFFFFF),
+    surfaceContainerLow = Color(0xFFFFFFFF),
+    surfaceContainer = Color(0xFFFFFFFF),
+    surfaceContainerHigh = Color(0xFFFFFFFF),
+    surfaceContainerHighest = Color(0xFFFFFFFF),
+    outline = Color(0xFFD9DAE3),
+    outlineVariant = Color(0xFFEDEDF2),
     error = Color(0xFFD32F2F),
-    errorContainer = Color(0xFFFFEBEE),
     onError = Color.White,
+    errorContainer = Color(0xFFFFEBEE),
     onErrorContainer = Color(0xFFC62828)
 )
 
 private val DarkColorScheme = darkColorScheme(
-    primary = Color(0xFFF8BBD0),
-    primaryContainer = Color(0xFF880E4F),
-    secondary = Color(0xFFC5CAE9),
-    secondaryContainer = Color(0xFF1A237E),
-    onSecondaryContainer = Color(0xFFE8EAF6),
-    tertiary = Color(0xFF80CBC4),
-    tertiaryContainer = Color(0xFF004D40),
-    surface = Color(0xFF1E1E1E),
-    background = Color(0xFF121212),
-    onPrimary = Color(0xFF1D1D1D),
-    onSecondary = Color(0xFF1D1D1D),
-    onTertiary = Color(0xFF1D1D1D),
-    onSurface = Color(0xFFE6E6E6),
-    onSurfaceVariant = Color(0xFFBDBDBD),
-    onBackground = Color(0xFFE6E6E6),
+    primary = Color(0xFFB9A3FF),
+    onPrimary = Color(0xFF2A1670),
+    primaryContainer = Color(0xFF4A31A8),
+    onPrimaryContainer = Color(0xFFF2EEFF),
+    secondary = Color(0xFFC5C6F0),
+    onSecondary = Color(0xFF24254E),
+    secondaryContainer = Color(0xFF3D3E80),
+    onSecondaryContainer = Color(0xFFECEDFA),
+    tertiary = Color(0xFF7FD3A8),
+    onTertiary = Color(0xFF0D3B26),
+    tertiaryContainer = Color(0xFF1B5E3F),
+    onTertiaryContainer = Color(0xFFECF6ED),
+    background = Color(0xFF16172B),
+    onBackground = Color(0xFFE6E6F0),
+    surface = Color(0xFF1F2040),
+    onSurface = Color(0xFFE6E6F0),
+    surfaceVariant = Color(0xFF2A2B4F),
+    onSurfaceVariant = Color(0xFFB4B6CC),
+    surfaceContainerLowest = Color(0xFF1F2040),
+    surfaceContainerLow = Color(0xFF1F2040),
+    surfaceContainer = Color(0xFF1F2040),
+    surfaceContainerHigh = Color(0xFF1F2040),
+    surfaceContainerHighest = Color(0xFF1F2040),
+    outline = Color(0xFF4A4C70),
+    outlineVariant = Color(0xFF34365A),
     error = Color(0xFFEF5350),
-    errorContainer = Color(0xFFB71C1C),
     onError = Color(0xFF1D1D1D),
+    errorContainer = Color(0xFFB71C1C),
     onErrorContainer = Color(0xFFFFFFFF)
 )
 
-/** Cores fixas de status (chips): saturadas o bastante para texto branco nos dois temas. */
+/** Cores de status (texto/ícone dos chips) no tom da versão web; o fundo do chip é a mesma cor a 12%. */
 object StatusColors {
-    val Gray = Color(0xFF757575)
+    val Gray = Color(0xFF5F6470)
     val Amber = Color(0xFFB26A00)
-    val Orange = Color(0xFFE65100)
-    val Green = Color(0xFF2E7D32)
+    val Orange = Color(0xFFD9622B)
+    val Green = Color(0xFF2F8F7A)
     val Red = Color(0xFFD32F2F)
-    val Blue = Color(0xFF1976D2)
+    val Blue = Color(0xFF5B5FC7)
 }
 
 // Tamanhos padrão do Material 3; só display/headline/titleLarge ficam em negrito.

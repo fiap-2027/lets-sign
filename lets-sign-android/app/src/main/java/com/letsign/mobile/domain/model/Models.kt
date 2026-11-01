@@ -14,7 +14,11 @@ data class User(
     val telefone: String? = null,
     val role: Role = Role.SIGNER,
     val adminId: String? = null,
-    val criadoEm: String? = null
+    val criadoEm: String? = null,
+    /** Só dígitos (11). Opcional; exigido quando o documento tem campo "CPF" para a pessoa. */
+    val cpf: String? = null,
+    /** dd/MM/aaaa. Opcional. */
+    val dataNascimento: String? = null
 ) {
     val isAdmin: Boolean get() = role == Role.ADMIN
     val isSigner: Boolean get() = role == Role.SIGNER
@@ -52,19 +56,31 @@ data class Document(
     val events: List<AuditEvent> = emptyList(),
     val totalSignatarios: Int? = null,
     val assinados: Int? = null,
-    /** "OWNER" (criador) ou "SIGNER" (convidado), do ponto de vista do usuário logado. */
+    /** "OWNER" (criador), "SIGNER" (convidado) ou "OBSERVER" (só acompanha), do ponto de vista do usuário logado. */
     val papel: String? = null,
     /** Situação do usuário logado como signatário (só vem quando papel = SIGNER). */
     val minhaSituacao: SignerStatus? = null,
     val meuPapel: RoleLabel? = null,
     val assinadoEm: String? = null,
-    val possuiDocumentoFinal: Boolean = false
+    val possuiDocumentoFinal: Boolean = false,
+    /** Pasta de destino (como na web: "Documentos" por padrão). */
+    val pasta: String = DEFAULT_FOLDER,
+    val categorias: List<String> = emptyList(),
+    /** Pessoas que só acompanham o documento (aba Permissões): veem, mas não assinam. */
+    val observadores: List<User> = emptyList()
 ) {
+    companion object {
+        const val DEFAULT_FOLDER = "Documentos"
+    }
+
     val isDraft: Boolean get() = status == DocumentStatus.DRAFT
     val isPending: Boolean get() = status == DocumentStatus.PENDING || status == DocumentStatus.PARTIALLY_SIGNED
     val isCompleted: Boolean get() = status == DocumentStatus.COMPLETED
     val isCancelled: Boolean get() = status == DocumentStatus.CANCELLED
-    val isOwnerView: Boolean get() = papel != "SIGNER"
+    val isOwnerView: Boolean get() = papel != "SIGNER" && papel != "OBSERVER"
+
+    /** Pessoa que só acompanha (aba Permissões): vê o documento, mas não assina. */
+    val isObserver: Boolean get() = papel == "OBSERVER"
     val canEdit: Boolean get() = isDraft && isOwnerView
 
     /** Regra: documento enviado não muda; alteração = nova versão (só o dono, e não depois de concluído). */
@@ -138,8 +154,21 @@ data class SignatureField(
     val width: Float,
     val height: Float,
     val required: Boolean = true,
-    val roleLabel: RoleLabel = RoleLabel.CONTRATADO
+    val roleLabel: RoleLabel = RoleLabel.CONTRATADO,
+    val tipo: FieldType = FieldType.ASSINATURA
 )
+
+/** Tipos de campo que o Admin posiciona no PDF (lista "campos do signatário" da web). */
+@Serializable
+enum class FieldType(val label: String) {
+    ASSINATURA("Assinatura"),
+    RUBRICA("Rubrica"),
+    CARIMBO("Carimbo / Selo"),
+    NOME("Nome"),
+    EMAIL("E-mail"),
+    CPF("CPF"),
+    DATA("Data de assinatura")
+}
 
 @Serializable
 data class AuditEvent(
@@ -165,6 +194,7 @@ enum class AuditType {
     REJECTED,
     VERSION_CREATED,
     COMPLETED,
+    REMINDER,
     /** Tipo novo no backend que este app ainda não conhece. */
     OTHER
 }
@@ -214,7 +244,36 @@ data class DraftField(
     val x: Float,
     val y: Float,
     val width: Float,
-    val height: Float
+    val height: Float,
+    val tipo: FieldType = FieldType.ASSINATURA
+)
+
+/** Modelo: um documento já configurado (PDF, signatários e campos) que serve de ponto de partida. */
+data class DocumentTemplate(
+    val id: String,
+    val nome: String,
+    val sourceDocumentId: String,
+    val criadoEm: String
+)
+
+/** Resultado de aplicar um modelo a um PDF novo: quem assina e onde ficam os campos. */
+data class TemplateMatch(
+    val template: DocumentTemplate,
+    /** Parecença 0..1 entre o PDF novo e o documento que originou o modelo. */
+    val score: Double,
+    val participants: List<DraftParticipant>,
+    val fields: List<DraftField>,
+    /** Campos recolocados pela âncora de texto (os demais ficaram na posição original). */
+    val anchored: Int,
+    /** Contatos do modelo que não existem mais (os campos deles ficam de fora). */
+    val missingSigners: Int
+)
+
+/** Grupo de contatos ("signatários padrão" da web): adiciona várias pessoas de uma vez no assistente. */
+data class SignerGroup(
+    val id: String,
+    val nome: String,
+    val memberIds: List<String>
 )
 
 data class SendResult(

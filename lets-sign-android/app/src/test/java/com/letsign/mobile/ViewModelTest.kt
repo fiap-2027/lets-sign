@@ -89,7 +89,7 @@ class ViewModelTest {
         assertEquals(WizardStep.CAMPOS, vm.uiState.value.step)
 
         vm.next()
-        assertEquals("Posicione pelo menos um campo para Ana Costa.", vm.uiState.value.stepError)
+        assertEquals("Posicione pelo menos um campo de assinatura para Ana Costa.", vm.uiState.value.stepError)
         assertEquals(WizardStep.CAMPOS, vm.uiState.value.step)
     }
 
@@ -189,7 +189,7 @@ class ViewModelTest {
 
     /** O uiState do detalhe só é calculado enquanto alguém observa (como a tela faz): o teste observa também. */
     private fun TestScope.detailVm(importer: FakePdfImporter = FakePdfImporter()) =
-        DocumentDetailViewModel(SavedStateHandle(mapOf("documentId" to "d1")), docs, FakeAuthRepository(), importer).also { vm ->
+        DocumentDetailViewModel(SavedStateHandle(mapOf("documentId" to "d1")), docs, FakeAuthRepository(), importer, FakeSignerRepository(emptyList())).also { vm ->
             backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect {} }
         }
 

@@ -5,7 +5,10 @@ package com.letsign.mobile.presentation.ui.screens.documents
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -29,6 +32,7 @@ import androidx.compose.material.icons.filled.Draw
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.TaskAlt
@@ -72,6 +76,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentPasteGo
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.Sell
+import androidx.compose.material3.PrimaryScrollableTabRow
+import androidx.compose.material3.Tab
+import com.letsign.mobile.BuildConfig
+import com.letsign.mobile.domain.model.User
 import com.letsign.mobile.domain.model.AuditType
 import com.letsign.mobile.domain.model.Document
 import com.letsign.mobile.domain.model.LocalPdf
@@ -89,6 +104,8 @@ import com.letsign.mobile.presentation.ui.components.LetsSignTopAppBar
 import com.letsign.mobile.presentation.ui.components.LoadingOverlay
 import com.letsign.mobile.presentation.ui.components.SectionCard
 import com.letsign.mobile.presentation.ui.components.SignerStatusChip
+import com.letsign.mobile.presentation.ui.components.StatusBadge
+import com.letsign.mobile.presentation.ui.components.WebCard
 import com.letsign.mobile.presentation.ui.components.SnackbarMessage
 import com.letsign.mobile.presentation.ui.components.signerColor
 import com.letsign.mobile.presentation.ui.preview.PreviewData
@@ -121,14 +138,21 @@ fun DocumentDetailScreen(
     }
     DocumentDetailContent(
         state = state,
-        onPickNewVersion = { picker.launch(arrayOf("application/pdf")) },
+        onPickNewVersion = { picker.launch(arrayOf("application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/msword")) },
         onBack = onNavigateBack,
         onRefresh = viewModel::refresh,
         onContinueDraft = { onContinueDraft(viewModel.documentId) },
         onSign = { onSign(viewModel.documentId) },
         onReject = viewModel::reject,
         onViewPdf = { kind -> onViewPdf(viewModel.documentId, kind) },
-        onMessagesShown = viewModel::consumeMessages
+        onMessagesShown = viewModel::consumeMessages,
+        extras = DetailExtras(
+            onReminder = viewModel::sendReminder,
+            onAddObserver = viewModel::addObserver,
+            onRemoveObserver = viewModel::removeObserver,
+            onSaveTemplate = viewModel::saveAsTemplate,
+            onSaveOrganization = viewModel::saveOrganization
+        )
     )
 }
 
@@ -143,7 +167,9 @@ fun DocumentDetailContent(
     onReject: (String) -> Unit,
     onViewPdf: (PdfKind) -> Unit,
     onMessagesShown: () -> Unit,
-    onPickNewVersion: () -> Unit = {}
+    onPickNewVersion: () -> Unit = {},
+    extras: DetailExtras = DetailExtras(),
+    initialTab: Int = 0
 ) {
     val snackbar = remember { SnackbarHostState() }
     val document = state.document
@@ -168,7 +194,7 @@ fun DocumentDetailContent(
     ) { padding ->
         PullToRefreshBox(isRefreshing = state.isRefreshing && document != null, onRefresh = onRefresh, modifier = Modifier.fillMaxSize().padding(padding)) {
             when {
-                document != null -> DetailBody(document, state.localPdfs, state.currentUserId, onContinueDraft, onSign, { showReject = true }, onViewPdf, { showNewVersion = true })
+                document != null -> DetailBody(document, state, onContinueDraft, onSign, { showReject = true }, onViewPdf, { showNewVersion = true }, extras, initialTab)
                 state.error != null -> EmptyState(Icons.Default.ErrorOutline, "Não foi possível abrir", state.error, "Tentar novamente", onRefresh)
                 else -> CenteredLoading()
             }
@@ -208,28 +234,234 @@ fun DocumentDetailContent(
     }
 }
 
+/** Ações das abas novas (Lembretes, Permissões, modelo e organização). Os previews usam os padrões. */
+data class DetailExtras(
+    val onReminder: () -> Unit = {},
+    val onAddObserver: (String) -> Unit = {},
+    val onRemoveObserver: (String) -> Unit = {},
+    val onSaveTemplate: (String) -> Unit = {},
+    val onSaveOrganization: (pasta: String, categorias: String) -> Unit = { _, _ -> }
+)
+
+/** Abas como na versão web: Envelope, Assinaturas, Lembretes, Permissões e Auditoria (as do dono só aparecem para ele). */
 @Composable
 private fun DetailBody(
     document: Document,
-    localPdfs: List<LocalPdf>,
-    currentUserId: String?,
+    state: DocumentDetailUiState,
     onContinueDraft: () -> Unit,
     onSign: () -> Unit,
     onReject: () -> Unit,
     onViewPdf: (PdfKind) -> Unit,
-    onNewVersion: () -> Unit
+    onNewVersion: () -> Unit,
+    extras: DetailExtras,
+    initialTab: Int
 ) {
-    Column(
-        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+    val tabs = if (document.isOwnerView) listOf("Envelope", "Assinaturas", "Lembretes", "Permissões", "Auditoria")
+    else listOf("Envelope", "Assinaturas", "Auditoria")
+    var tab by rememberSaveable { mutableStateOf(initialTab.coerceIn(0, tabs.lastIndex)) }
+    Column(Modifier.fillMaxSize()) {
+        PrimaryScrollableTabRow(selectedTabIndex = tab, edgePadding = 8.dp) {
+            tabs.forEachIndexed { i, title -> Tab(selected = tab == i, onClick = { tab = i }, text = { Text(title) }) }
+        }
+        Column(
+            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            when (tabs[tab]) {
+                "Envelope" -> {
+                    HeaderCard(document)
+                    ActionsCard(document, onContinueDraft, onSign, onReject, onViewPdf, onNewVersion)
+                    OrganizationCard(document, extras)
+                    if (state.localPdfs.isNotEmpty()) LocalFilesCard(state.localPdfs)
+                }
+                "Assinaturas" -> {
+                    ParticipantsCard(document, state.currentUserId)
+                    if (document.isOwnerView && document.fields.isNotEmpty()) FieldsCard(document)
+                }
+                "Lembretes" -> RemindersCard(document, extras.onReminder)
+                "Permissões" -> PermissionsCard(document, state.contacts, extras)
+                else -> {
+                    if (document.events.isNotEmpty()) TimelineCard(document)
+                    HashCard(document)
+                }
+            }
+            Spacer(Modifier.height(24.dp))
+        }
+    }
+}
+
+@Composable
+private fun OrganizationCard(document: Document, extras: DetailExtras) {
+    var editing by rememberSaveable { mutableStateOf(false) }
+    var naming by rememberSaveable { mutableStateOf(false) }
+    SectionCard(
+        title = "Informações",
+        trailing = { if (document.isOwnerView) TextButton(onClick = { editing = true }) { Text("Editar") } }
     ) {
-        HeaderCard(document)
-        ActionsCard(document, onContinueDraft, onSign, onReject, onViewPdf, onNewVersion)
-        ParticipantsCard(document, currentUserId)
-        if (document.isOwnerView && document.fields.isNotEmpty()) FieldsCard(document)
-        if (document.events.isNotEmpty()) TimelineCard(document)
-        if (localPdfs.isNotEmpty()) LocalFilesCard(localPdfs)
-        Spacer(Modifier.height(24.dp))
+        InfoRow(Icons.Default.Folder, "Pasta", document.pasta)
+        InfoRow(Icons.Default.Sell, "Categorias", document.categorias.joinToString().ifEmpty { "Nenhuma" })
+        document.mensagem?.let { InfoRow(Icons.AutoMirrored.Filled.Send, "Mensagem do convite", it) }
+        if (document.isOwnerView) {
+            OutlinedButton(onClick = { naming = true }, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.ContentPasteGo, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Salvar como modelo")
+            }
+        }
+    }
+    if (editing) {
+        var pasta by rememberSaveable { mutableStateOf(document.pasta) }
+        var cats by rememberSaveable { mutableStateOf(document.categorias.joinToString(", ")) }
+        AlertDialog(
+            onDismissRequest = { editing = false },
+            title = { Text("Informações do documento") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(pasta, { pasta = it.take(60) }, label = { Text("Pasta") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(cats, { cats = it.take(200) }, label = { Text("Categorias (separe por vírgula)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    editing = false
+                    extras.onSaveOrganization(pasta, cats)
+                }) { Text("Salvar", fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = { TextButton(onClick = { editing = false }) { Text("Cancelar") } }
+        )
+    }
+    if (naming) {
+        var nome by rememberSaveable { mutableStateOf(document.titulo) }
+        AlertDialog(
+            onDismissRequest = { naming = false },
+            title = { Text("Salvar como modelo") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("O modelo guarda quem assina e onde fica cada campo. Ao subir um PDF com o mesmo layout (ex.: outro NDA), as caixas entram posicionadas sozinhas. \"Usar um modelo\" na tela inicial também cria um rascunho com este mesmo PDF.")
+                    OutlinedTextField(nome, { nome = it.take(200) }, label = { Text("Nome do modelo") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    naming = false
+                    extras.onSaveTemplate(nome)
+                }, enabled = nome.isNotBlank()) { Text("Salvar", fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = { TextButton(onClick = { naming = false }) { Text("Cancelar") } }
+        )
+    }
+}
+
+@Composable
+private fun InfoRow(icon: ImageVector, label: String, value: String) {
+    Row(verticalAlignment = Alignment.Top) {
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp).padding(top = 2.dp))
+        Spacer(Modifier.width(12.dp))
+        Column {
+            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(value, style = MaterialTheme.typography.bodyMedium)
+        }
+    }
+}
+
+@Composable
+private fun RemindersCard(document: Document, onReminder: () -> Unit) {
+    val pending = document.signers.filter { it.isPending || it.isViewed }
+    val reminders = document.events.filter { it.tipo == AuditType.REMINDER }
+    SectionCard(title = "Lembretes", trailing = { Icon(Icons.Default.NotificationsActive, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }) {
+        Text(
+            if (document.isPending) "Aguardando ${pending.size} signatário(s): ${pending.joinToString { it.signer?.nome.orEmpty() }}."
+            else "Lembretes só valem para documentos aguardando assinatura.",
+            style = MaterialTheme.typography.bodyMedium
+        )
+        Button(onClick = onReminder, enabled = document.isPending && pending.isNotEmpty(), modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Default.NotificationsActive, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Enviar lembrete agora")
+        }
+        Text(
+            if (BuildConfig.USE_API) "O lembrete fica registrado na auditoria."
+            else "No app, o lembrete fica registrado na auditoria e o documento continua em \"Pendentes\" para quem ainda não assinou.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        if (reminders.isNotEmpty()) {
+            HorizontalDivider()
+            Text("Enviados (${reminders.size})", style = MaterialTheme.typography.labelLarge)
+            reminders.asReversed().forEach { e -> TimelineRow(Icons.Default.NotificationsActive, StatusColors.Blue, e.descricao, formatDateTime(e.timestamp)) }
+        }
+    }
+}
+
+@Composable
+private fun PermissionsCard(document: Document, contacts: List<User>, extras: DetailExtras) {
+    var adding by rememberSaveable { mutableStateOf(false) }
+    val signerIds = document.signers.map { it.signerId }.toSet()
+    val observerIds = document.observadores.map { it.id }.toSet()
+    val candidates = contacts.filter { it.id !in signerIds && it.id !in observerIds }
+    SectionCard(title = "Quem tem acesso", trailing = { Icon(Icons.Default.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }) {
+        PermissionRow(document.owner?.nome ?: "Você", "Dono: configura, envia e acompanha", null)
+        document.signers.forEach { p -> PermissionRow(p.signer?.nome.orEmpty(), "Signatário (${p.roleLabel.label.lowercase()}): visualiza e assina", null) }
+        HorizontalDivider()
+        Text("Observadores", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+        Text("Acompanham o documento e baixam o PDF final, sem assinar. Valem a partir do envio.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (document.observadores.isEmpty()) Text("Nenhum observador.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        document.observadores.forEach { o -> PermissionRow(o.nome, o.email) { extras.onRemoveObserver(o.id) } }
+        OutlinedButton(onClick = { adding = true }, enabled = candidates.isNotEmpty() && !document.isCancelled, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Default.PersonAdd, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Adicionar observador")
+        }
+    }
+    if (adding) {
+        AlertDialog(
+            onDismissRequest = { adding = false },
+            title = { Text("Adicionar observador") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    candidates.forEach { c ->
+                        Row(Modifier.fillMaxWidth().clickable {
+                            adding = false
+                            extras.onAddObserver(c.id)
+                        }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Avatar(c.initials, size = 32)
+                            Spacer(Modifier.width(12.dp))
+                            Column {
+                                Text(c.nome)
+                                Text(c.email, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { adding = false }) { Text("Cancelar") } }
+        )
+    }
+}
+
+@Composable
+private fun PermissionRow(name: String, detail: String, onRemove: (() -> Unit)?) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Avatar(User(id = "", nome = name, email = "").initials, size = 32)
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+            Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (onRemove != null) IconButton(onClick = onRemove) { Icon(Icons.Default.Close, contentDescription = "Remover $name") }
+    }
+}
+
+@Composable
+private fun HashCard(document: Document) {
+    SectionCard(title = "Integridade") {
+        Text("Versão ${document.versao}", style = MaterialTheme.typography.bodyMedium)
+        Text("SHA-256 do original:", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(document.hashSha256, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+        document.hashFinal?.let {
+            Text("SHA-256 do PDF final assinado:", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(it, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+        }
     }
 }
 
@@ -237,7 +469,7 @@ private fun DetailBody(
 private fun HeaderCard(document: Document) {
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
-    Card(modifier = Modifier.fillMaxWidth()) {
+    WebCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.Top) {
                 Column(modifier = Modifier.weight(1f)) {
@@ -254,8 +486,22 @@ private fun HeaderCard(document: Document) {
 
             if (document.signers.isNotEmpty() && !document.isDraft) {
                 val total = document.requiredSigners.coerceAtLeast(1)
-                LinearProgressIndicator(progress = { document.requiredSigned / total.toFloat() }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
-                Text("${document.requiredSigned} de ${document.requiredSigners} assinatura(s) obrigatória(s)", style = MaterialTheme.typography.bodySmall)
+                val done = document.requiredSigned >= document.requiredSigners
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = StatusColors.Green, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("${document.requiredSigned} / ${document.requiredSigners}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Assinaturas no documento", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                LinearProgressIndicator(
+                    progress = { document.requiredSigned / total.toFloat() },
+                    color = if (done) StatusColors.Green else MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.outlineVariant,
+                    drawStopIndicator = {},
+                    gapSize = 0.dp,
+                    modifier = Modifier.fillMaxWidth().height(6.dp)
+                )
             }
 
             HorizontalDivider()
@@ -339,7 +585,13 @@ private fun ParticipantsCard(document: Document, currentUserId: String?) {
 @Composable
 private fun ParticipantRow(p: Participant, index: Int, isMe: Boolean) {
     Row(verticalAlignment = Alignment.Top) {
-        Avatar(p.signer?.initials.orEmpty(), color = signerColor(index), contentColor = MaterialTheme.colorScheme.surface)
+        Box {
+            Avatar(p.signer?.initials.orEmpty(), color = signerColor(index), contentColor = Color.White)
+            if (p.isSigned) Icon(
+                Icons.Default.CheckCircle, contentDescription = "Assinou", tint = StatusColors.Green,
+                modifier = Modifier.size(16.dp).align(Alignment.BottomEnd).background(MaterialTheme.colorScheme.surface, CircleShape)
+            )
+        }
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
@@ -357,9 +609,10 @@ private fun ParticipantRow(p: Participant, index: Int, isMe: Boolean) {
                 SignerStatus.PENDING -> p.invitedAt?.let { "Convidado em ${formatDateTime(it)}" } ?: "Ainda não convidado"
             }
             Text(whenText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (p.isSigned) StatusBadge("Assinou como ${p.roleLabel.label.lowercase()}", color = StatusColors.Green, modifier = Modifier.padding(top = 4.dp))
         }
         Spacer(Modifier.width(8.dp))
-        SignerStatusChip(p.status)
+        if (!p.isSigned) SignerStatusChip(p.status)
     }
 }
 
@@ -387,6 +640,7 @@ private fun TimelineCard(document: Document) {
                 AuditType.SIGNED -> Icons.Default.Draw to StatusColors.Green
                 AuditType.REJECTED -> Icons.Default.Block to StatusColors.Red
                 AuditType.COMPLETED -> Icons.Default.CheckCircle to StatusColors.Green
+                AuditType.REMINDER -> Icons.Default.NotificationsActive to StatusColors.Blue
                 AuditType.OTHER -> Icons.Default.Description to MaterialTheme.colorScheme.onSurfaceVariant
             }
             TimelineRow(icon, tint, e.descricao, formatDateTime(e.timestamp))
@@ -454,4 +708,22 @@ fun DocumentDetailAdminPreview() = LetsSignTheme {
 @Composable
 fun DocumentDetailSignerPreview() = LetsSignTheme {
     DocumentDetailContent(DocumentDetailUiState(document = PreviewData.signerDocument, currentUserId = PreviewData.ana.id), {}, {}, {}, {}, {}, {}, {})
+}
+
+@ScreenPreviews
+@Composable
+fun DocumentDetailSignaturesPreview() = LetsSignTheme {
+    DocumentDetailContent(DocumentDetailUiState(document = PreviewData.document, currentUserId = PreviewData.admin.id), {}, {}, {}, {}, {}, {}, {}, initialTab = 1)
+}
+
+@ScreenPreviews
+@Composable
+fun DocumentDetailPermissionsPreview() = LetsSignTheme {
+    DocumentDetailContent(
+        DocumentDetailUiState(
+            document = PreviewData.document.copy(observadores = listOf(PreviewData.signers.last())),
+            currentUserId = PreviewData.admin.id, contacts = PreviewData.signers
+        ),
+        {}, {}, {}, {}, {}, {}, {}, initialTab = 3
+    )
 }

@@ -2,6 +2,10 @@ package com.letsign.mobile.domain.rules
 
 import com.letsign.mobile.domain.model.DraftField
 import com.letsign.mobile.domain.model.DraftParticipant
+import com.letsign.mobile.domain.model.FieldType
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.UUID
 
 // Regras de negócio do desafio validadas no app ANTES de chamar a API (o backend valida de novo).
@@ -46,9 +50,37 @@ object DocumentRules {
         if (fields.any { it.signerId !in ids }) return "Existe campo de assinatura sem signatário associado."
         if (fields.any { it.page !in 1..pageCount }) return "Existe campo em uma página que não existe no PDF."
         if (fields.any { !it.isInsidePage() }) return "Existe campo de assinatura fora dos limites da página."
-        val semCampo = participants.firstOrNull { p -> fields.none { it.signerId == p.signer.id } }
-        if (semCampo != null) return "Posicione pelo menos um campo para ${semCampo.signer.nome}."
+        val semCampo = participants.firstOrNull { p -> fields.none { it.signerId == p.signer.id && it.tipo == FieldType.ASSINATURA } }
+        if (semCampo != null) return "Posicione pelo menos um campo de assinatura para ${semCampo.signer.nome}."
+        // O campo "CPF" é preenchido com o cadastro do contato: sem CPF cadastrado não há o que escrever.
+        val semCpf = participants.firstOrNull { p -> p.signer.cpf.isNullOrBlank() && fields.any { it.signerId == p.signer.id && it.tipo == FieldType.CPF } }
+        if (semCpf != null) return "Cadastre o CPF de ${semCpf.signer.nome} em Contatos para usar o campo CPF."
         return null
+    }
+
+    /** CPF opcional; se informado, precisa ter 11 dígitos e dígitos verificadores válidos. */
+    fun validateCpf(cpf: String): String? {
+        val d = cpf.filter(Char::isDigit)
+        if (cpf.isBlank()) return null
+        if (d.length != 11 || d.toSet().size == 1) return "Informe um CPF válido."
+        fun check(n: Int): Int = (11 - (0 until n).sumOf { (d[it] - '0') * (n + 1 - it) } % 11).let { if (it >= 10) 0 else it }
+        return if (check(9) == d[9] - '0' && check(10) == d[10] - '0') null else "Informe um CPF válido."
+    }
+
+    /** Data de nascimento opcional, no formato dd/mm/aaaa, no passado. */
+    fun validateBirthDate(text: String): String? {
+        if (text.isBlank()) return null
+        val date = runCatching { SimpleDateFormat("dd/MM/yyyy", Locale.US).apply { isLenient = false }.parse(text.trim()) }.getOrNull()
+        return when {
+            date == null || !Regex("\\d{2}/\\d{2}/\\d{4}").matches(text.trim()) -> "Informe a data de nascimento como dd/mm/aaaa."
+            date.after(Date()) || text.trim().takeLast(4).toInt() < 1900 -> "Informe uma data de nascimento válida."
+            else -> null
+        }
+    }
+
+    fun formatCpf(cpf: String?): String {
+        val d = cpf.orEmpty().filter(Char::isDigit)
+        return if (d.length == 11) "${d.substring(0, 3)}.${d.substring(3, 6)}.${d.substring(6, 9)}-${d.substring(9)}" else d
     }
 
     /** Cadastro da própria conta (Admin): telefone é opcional. */
@@ -60,21 +92,32 @@ object DocumentRules {
     }
 
     /** Signatário (requisito: nome, e-mail, telefone e senha). Na edição, senha vazia = manter a atual. */
-    fun validateSigner(nome: String, email: String, telefone: String, senha: String, isNew: Boolean): String? = when {
+    fun validateSigner(nome: String, email: String, telefone: String, senha: String, isNew: Boolean, cpf: String = "", dataNascimento: String = ""): String? = when {
         nome.isBlank() -> "Informe o nome completo."
         !EMAIL.matches(email.trim()) -> "Informe um e-mail válido."
         telefone.count { it.isDigit() } < 10 -> "Informe o telefone com DDD."
         isNew && senha.length < MIN_PASSWORD -> "A senha deve ter pelo menos $MIN_PASSWORD caracteres."
         !isNew && senha.isNotEmpty() && senha.length < MIN_PASSWORD -> "A nova senha deve ter pelo menos $MIN_PASSWORD caracteres."
-        else -> null
+        else -> validateCpf(cpf) ?: validateBirthDate(dataNascimento)
     }
 
     /** Campo novo centralizado; cada campo extra na mesma página desce um pouco para não sobrepor. */
-    fun newField(signerId: String, page: Int, existingOnPage: Int): DraftField {
-        val x = (1f - DEFAULT_FIELD_WIDTH) / 2f
-        val y = ((1f - DEFAULT_FIELD_HEIGHT) / 2f + existingOnPage * 0.1f) % (1f - DEFAULT_FIELD_HEIGHT)
-        return DraftField(UUID.randomUUID().toString(), signerId, page, x, y, DEFAULT_FIELD_WIDTH, DEFAULT_FIELD_HEIGHT)
+    fun newField(signerId: String, page: Int, existingOnPage: Int, tipo: FieldType = FieldType.ASSINATURA): DraftField {
+        // Assinatura e carimbo são maiores; rubrica é pequena; texto (nome, CPF...) é uma linha.
+        val (w, h) = when (tipo) {
+            FieldType.ASSINATURA -> DEFAULT_FIELD_WIDTH to DEFAULT_FIELD_HEIGHT
+            FieldType.CARIMBO -> DEFAULT_FIELD_WIDTH to 0.10f
+            FieldType.RUBRICA -> 0.12f to 0.06f
+            else -> 0.30f to 0.04f
+        }
+        val x = (1f - w) / 2f
+        val y = ((1f - h) / 2f + existingOnPage * 0.1f) % (1f - h)
+        return DraftField(UUID.randomUUID().toString(), signerId, page, x, y, w, h, tipo)
     }
+
+    /** Categorias digitadas separadas por vírgula: sem vazias nem repetidas. */
+    fun parseCategories(text: String): List<String> =
+        text.split(',').map { it.trim() }.filter { it.isNotEmpty() }.distinctBy { it.lowercase() }
 }
 
 private const val EPS = 1e-4f

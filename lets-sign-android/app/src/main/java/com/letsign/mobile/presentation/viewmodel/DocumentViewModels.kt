@@ -7,12 +7,14 @@ import androidx.lifecycle.viewModelScope
 import com.letsign.mobile.data.pdf.PdfImporter
 import com.letsign.mobile.domain.model.Document
 import com.letsign.mobile.domain.model.DocumentStatus
+import com.letsign.mobile.domain.model.DocumentTemplate
 import com.letsign.mobile.domain.model.LocalPdf
 import com.letsign.mobile.domain.model.PdfKind
 import com.letsign.mobile.domain.model.SignerStatus
 import com.letsign.mobile.domain.model.User
 import com.letsign.mobile.domain.repository.AuthRepository
 import com.letsign.mobile.domain.repository.DocumentRepository
+import com.letsign.mobile.domain.repository.SignerRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -31,6 +33,7 @@ import kotlin.coroutines.cancellation.CancellationException
 /** Filtros da tela do Admin (requisito: ver enviados, parcialmente assinados e concluídos). */
 enum class AdminFilter(val label: String, val matches: (Document) -> Boolean) {
     ALL("Todos", { true }),
+    WAITING("Aguardando terceiros", { it.isPending }),
     DRAFT("Rascunhos", { it.status == DocumentStatus.DRAFT }),
     SENT("Enviados", { it.status == DocumentStatus.PENDING }),
     PARTIAL("Parciais", { it.status == DocumentStatus.PARTIALLY_SIGNED }),
@@ -42,7 +45,8 @@ enum class AdminFilter(val label: String, val matches: (Document) -> Boolean) {
 enum class SignerTab(val label: String, val matches: (Document) -> Boolean) {
     PENDING("Pendentes", { it.canSign }),
     SIGNED("Assinados", { it.minhaSituacao == SignerStatus.SIGNED }),
-    CLOSED("Cancelados", { !it.canSign && it.minhaSituacao != SignerStatus.SIGNED })
+    FOLLOWING("Acompanhando", { it.isObserver }),
+    CLOSED("Cancelados", { !it.canSign && it.minhaSituacao != SignerStatus.SIGNED && !it.isObserver })
 }
 
 data class DocumentListUiState(
@@ -51,8 +55,12 @@ data class DocumentListUiState(
     val adminFilter: AdminFilter = AdminFilter.ALL,
     val signerTab: SignerTab = SignerTab.PENDING,
     val isRefreshing: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    val templates: List<DocumentTemplate> = emptyList(),
+    /** Rascunho criado a partir de um modelo: a tela abre o assistente nele. */
+    val openDraftId: String? = null
 ) {
+    val folders: List<String> get() = documents.map { it.pasta }.distinct().sorted()
     val visibleAdminDocuments: List<Document> get() = documents.filter(adminFilter.matches)
     val visibleSignerDocuments: List<Document> get() = documents.filter(signerTab.matches)
     fun count(tab: SignerTab) = documents.count(tab.matches)
@@ -68,8 +76,8 @@ class DocumentListViewModel @Inject constructor(
     private val local = MutableStateFlow(DocumentListUiState())
 
     val uiState: StateFlow<DocumentListUiState> =
-        combine(local, documentRepository.observeDocuments(), authRepository.currentUser) { state, docs, user ->
-            state.copy(documents = docs, user = user)
+        combine(local, documentRepository.observeDocuments(), authRepository.currentUser, documentRepository.observeTemplates()) { state, docs, user, templates ->
+            state.copy(documents = docs, user = user, templates = templates)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DocumentListUiState())
 
     init {
@@ -87,12 +95,30 @@ class DocumentListViewModel @Inject constructor(
     fun setAdminFilter(filter: AdminFilter) = local.update { it.copy(adminFilter = filter) }
     fun setSignerTab(tab: SignerTab) = local.update { it.copy(signerTab = tab) }
     fun consumeError() = local.update { it.copy(error = null) }
+
+    fun useTemplate(template: DocumentTemplate) {
+        viewModelScope.launch {
+            documentRepository.createFromTemplate(template.id)
+                .onSuccess { doc -> local.update { it.copy(openDraftId = doc.id) } }
+                .onFailure { e -> local.update { it.copy(error = e.message) } }
+        }
+    }
+
+    fun deleteTemplate(template: DocumentTemplate) {
+        viewModelScope.launch {
+            documentRepository.deleteTemplate(template.id).onFailure { e -> local.update { it.copy(error = e.message) } }
+        }
+    }
+
+    fun consumeOpenDraft() = local.update { it.copy(openDraftId = null) }
 }
 
 data class DocumentDetailUiState(
     val document: Document? = null,
     val localPdfs: List<LocalPdf> = emptyList(),
     val currentUserId: String? = null,
+    /** Contatos do Admin, para escolher observadores. */
+    val contacts: List<User> = emptyList(),
     val isRefreshing: Boolean = false,
     val isWorking: Boolean = false,
     val workingMessage: String = "Registrando...",
@@ -107,7 +133,8 @@ class DocumentDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val documentRepository: DocumentRepository,
     authRepository: AuthRepository,
-    private val pdfImporter: PdfImporter
+    private val pdfImporter: PdfImporter,
+    signerRepository: SignerRepository
 ) : ViewModel() {
 
     val documentId: String = checkNotNull(savedStateHandle["documentId"])
@@ -118,8 +145,9 @@ class DocumentDetailViewModel @Inject constructor(
         local,
         documentRepository.observeDocument(documentId),
         documentRepository.observeLocalPdfs(documentId),
-        authRepository.currentUser
-    ) { state, doc, pdfs, user -> state.copy(document = doc, localPdfs = pdfs, currentUserId = user?.id) }
+        authRepository.currentUser,
+        signerRepository.observeSigners()
+    ) { state, doc, pdfs, user, contacts -> state.copy(document = doc, localPdfs = pdfs, currentUserId = user?.id, contacts = contacts) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DocumentDetailUiState())
 
     init {
@@ -172,12 +200,46 @@ class DocumentDetailViewModel @Inject constructor(
     }
 
     fun consumeMessages() = local.update { it.copy(error = null, message = null) }
+
+    fun sendReminder() = work("Registrando lembrete...") {
+        documentRepository.sendReminder(documentId).map { it.mensagem }
+    }
+
+    fun addObserver(userId: String) = setObservers { it + userId }
+    fun removeObserver(userId: String) = setObservers { it - userId }
+
+    private fun setObservers(change: (List<String>) -> List<String>) {
+        val current = uiState.value.document?.observadores.orEmpty().map { it.id }
+        work("Salvando permissões...") { documentRepository.setObservers(documentId, change(current)).map { "Permissões atualizadas." } }
+    }
+
+    fun saveAsTemplate(nome: String) = work("Salvando modelo...") {
+        documentRepository.saveAsTemplate(documentId, nome).map { "Modelo \"${it.nome}\" salvo. Use-o em \"Usar um modelo\" na tela inicial." }
+    }
+
+    fun saveOrganization(pasta: String, categorias: String) = work("Salvando...") {
+        documentRepository.updateOrganization(documentId, pasta, com.letsign.mobile.domain.rules.DocumentRules.parseCategories(categorias)).map { "Informações atualizadas." }
+    }
+
+    /** Ação curta com overlay de "trabalhando" e mensagem no snackbar. */
+    private fun work(label: String, block: suspend () -> Result<String>) {
+        viewModelScope.launch {
+            local.update { it.copy(isWorking = true, workingMessage = label, error = null) }
+            block()
+                .onSuccess { msg -> local.update { it.copy(isWorking = false, message = msg) } }
+                .onFailure { e -> local.update { it.copy(isWorking = false, error = e.message) } }
+        }
+    }
 }
 
 data class SignDocumentUiState(
     val document: Document? = null,
     val pdfPath: String? = null,
     val currentUserId: String? = null,
+    val userName: String = "",
+    val userEmail: String = "",
+    /** Código de 6 dígitos da etapa 3 (na web vai por e-mail; aqui o app gera e mostra no aviso). */
+    val sentCode: String? = null,
     val isLoading: Boolean = true,
     val isSigning: Boolean = false,
     val error: String? = null,
@@ -200,7 +262,7 @@ class SignDocumentViewModel @Inject constructor(
         local,
         documentRepository.observeDocument(documentId),
         authRepository.currentUser
-    ) { state, doc, user -> state.copy(document = doc, currentUserId = user?.id) }
+    ) { state, doc, user -> state.copy(document = doc, currentUserId = user?.id, userName = user?.nome.orEmpty(), userEmail = user?.email.orEmpty()) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SignDocumentUiState())
 
     init {
@@ -218,11 +280,24 @@ class SignDocumentViewModel @Inject constructor(
         }
     }
 
-    fun sign(pngBase64: String, gestureMetadata: JsonObject) {
+    /**
+     * Gera um novo código de verificação. Não há servidor de e-mail no modo local,
+     * então a tela mostra o código num aviso de "modo demonstração".
+     */
+    fun sendCode() {
+        val code = "%06d".format(java.security.SecureRandom().nextInt(1_000_000))
+        local.update { it.copy(sentCode = code) }
+    }
+
+    fun sign(pngBase64: String, gestureMetadata: JsonObject, rubricaPngBase64: String?, code: String) {
         if (local.value.isSigning) return
+        if (code != local.value.sentCode) {
+            local.update { it.copy(error = "Código inválido. Confira o token ou toque em Reenviar.") }
+            return
+        }
         viewModelScope.launch {
             local.update { it.copy(isSigning = true, error = null) }
-            documentRepository.signDocument(documentId, pngBase64, gestureMetadata)
+            documentRepository.signDocument(documentId, pngBase64, gestureMetadata, rubricaPngBase64)
                 .onSuccess { r ->
                     // "Salvar no sistema": se concluiu, já guarda o PDF final assinado no aparelho.
                     if (r.document.isCompleted) documentRepository.getPdf(documentId, PdfKind.FINAL)

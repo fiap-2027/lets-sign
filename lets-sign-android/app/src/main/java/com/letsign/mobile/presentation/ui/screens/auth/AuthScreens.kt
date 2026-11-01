@@ -100,6 +100,13 @@ fun LoginContent(
         PrimaryButton(text = "Entrar", isLoading = isLoading, onClick = { onLogin(email, password) })
 
         FooterLink(question = "Não tem conta?", action = "Cadastre-se", onClick = onNavigateToRegister)
+
+        // Mostra qual versão está instalada (útil para conferir se o APK novo entrou).
+        Text(
+            "Versão ${com.letsign.mobile.BuildConfig.VERSION_NAME}",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 

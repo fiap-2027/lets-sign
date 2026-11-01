@@ -84,6 +84,16 @@ import com.letsign.mobile.data.pdf.PdfDocumentRenderer
 import com.letsign.mobile.domain.model.DraftField
 import com.letsign.mobile.domain.model.DraftParticipant
 import com.letsign.mobile.domain.model.RoleLabel
+import com.letsign.mobile.domain.model.Document
+import com.letsign.mobile.domain.model.FieldType
+import com.letsign.mobile.presentation.viewmodel.AppliedTemplate
+import androidx.compose.material.icons.filled.AutoAwesome
+import com.letsign.mobile.domain.model.SignerGroup
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.material3.AssistChip
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.Sell
 import com.letsign.mobile.domain.model.User
 import com.letsign.mobile.domain.rules.DocumentRules
 import com.letsign.mobile.presentation.theme.LetsSignTheme
@@ -108,11 +118,20 @@ import com.letsign.mobile.presentation.viewmodel.SendOutcome
 import com.letsign.mobile.presentation.viewmodel.WizardStep
 import com.letsign.mobile.presentation.viewmodel.WizardUiState
 
+private const val DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
 /** Ações do assistente agrupadas (os previews usam os padrões que não fazem nada). */
 class WizardActions(
     val onClose: () -> Unit = {},
     val onPickPdf: () -> Unit = {},
     val onTitle: (String) -> Unit = {},
+    val onFolder: (String) -> Unit = {},
+    val onCategories: (String) -> Unit = {},
+    val onAddGroup: (SignerGroup) -> Unit = {},
+    val onFieldType: (FieldType) -> Unit = {},
+    val onApplyTemplate: (String) -> Unit = {},
+    val onUndoTemplate: () -> Unit = {},
+    val onSaveTemplate: (String) -> Unit = {},
     val onToggleParticipant: (User) -> Unit = {},
     val onRole: (String, RoleLabel) -> Unit = { _, _ -> },
     val onRequired: (String, Boolean) -> Unit = { _, _ -> },
@@ -156,8 +175,15 @@ fun NewDocumentScreen(
         state = state,
         actions = WizardActions(
             onClose = close,
-            onPickPdf = { picker.launch(arrayOf("application/pdf")) },
+            onPickPdf = { picker.launch(arrayOf("application/pdf", DOCX_MIME, "application/msword")) },
             onTitle = viewModel::setTitle,
+            onFolder = viewModel::setFolder,
+            onCategories = viewModel::setCategories,
+            onAddGroup = viewModel::addGroup,
+            onFieldType = viewModel::setFieldType,
+            onApplyTemplate = viewModel::applyTemplate,
+            onUndoTemplate = viewModel::undoTemplate,
+            onSaveTemplate = viewModel::saveAsTemplate,
             onToggleParticipant = viewModel::toggleParticipant,
             onRole = viewModel::setRole,
             onRequired = viewModel::setRequired,
@@ -241,7 +267,7 @@ fun NewDocumentContent(state: WizardUiState, actions: WizardActions) {
             when {
                 state.isLoading -> CenteredLoading()
                 state.loadError != null -> EmptyState(Icons.Default.ErrorOutline, "Não foi possível abrir o rascunho", state.loadError, "Voltar", actions.onClose)
-                outcome is SendOutcome.Success -> SuccessStep(outcome, actions)
+                outcome is SendOutcome.Success -> SuccessStep(outcome, state, actions)
                 else -> Column(Modifier.fillMaxSize()) {
                     StepIndicator(state.step, actions.onGoTo)
                     HorizontalDivider()
@@ -308,7 +334,7 @@ private fun DataStep(state: WizardUiState, actions: WizardActions) {
                 )
             }
         } else {
-            Text("Escolha o PDF e dê um título ao documento.", style = MaterialTheme.typography.bodyLarge)
+            Text("Escolha o arquivo e dê um título ao documento.", style = MaterialTheme.typography.bodyLarge)
         }
 
         val pdf = state.pdf
@@ -316,8 +342,9 @@ private fun DataStep(state: WizardUiState, actions: WizardActions) {
             OutlinedCard(onClick = actions.onPickPdf, enabled = !state.isImporting, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.fillMaxWidth().padding(vertical = 32.dp, horizontal = 16.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (state.isImporting) CircularProgressIndicator() else Icon(Icons.Default.UploadFile, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary)
-                    Text(if (state.isImporting) "Validando o arquivo..." else "Selecionar PDF do celular", style = MaterialTheme.typography.titleMedium)
-                    Text("Até 15 MB. O arquivo é verificado antes do envio.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(if (state.isImporting) "Validando o arquivo..." else "Selecionar arquivo do celular", style = MaterialTheme.typography.titleMedium)
+                    Text("Formatos aceitos: .PDF ou .DOCX (Word, convertido em PDF só com o texto). Até 15 MB.", style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
                 }
             }
         } else {
@@ -334,6 +361,14 @@ private fun DataStep(state: WizardUiState, actions: WizardActions) {
             }
         }
         state.pdfError?.let { ErrorBanner(it, "Escolher outro", actions.onPickPdf) }
+        if (state.isMatching) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                Spacer(Modifier.width(8.dp))
+                Text("Procurando um modelo compatível...", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        state.appliedTemplate?.let { TemplateBanner(it, actions.onUndoTemplate) }
 
         OutlinedTextField(
             value = state.titulo,
@@ -342,6 +377,27 @@ private fun DataStep(state: WizardUiState, actions: WizardActions) {
             enabled = !state.editMode,
             singleLine = true,
             supportingText = { Text(if (state.editMode) "O título não muda depois que o documento é criado." else "${state.titulo.length}/${DocumentRules.MAX_TITLE}") },
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Text("Organização", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+        OutlinedTextField(
+            value = state.pasta,
+            onValueChange = actions.onFolder,
+            label = { Text("Pasta de destino") },
+            leadingIcon = { Icon(Icons.Default.Folder, contentDescription = null) },
+            singleLine = true,
+            supportingText = { Text("Agrupa documentos na tela inicial.") },
+            modifier = Modifier.fillMaxWidth()
+        )
+        OutlinedTextField(
+            value = state.categorias,
+            onValueChange = actions.onCategories,
+            label = { Text("Categorias (opcional)") },
+            leadingIcon = { Icon(Icons.Default.Sell, contentDescription = null) },
+            placeholder = { Text("Ex.: Contratos, RH") },
+            singleLine = true,
+            supportingText = { Text("Separe por vírgula. Ajudam na busca.") },
             modifier = Modifier.fillMaxWidth()
         )
     }
@@ -365,6 +421,21 @@ private fun SignersStep(state: WizardUiState, actions: WizardActions) {
             state.participants.forEachIndexed { index, p ->
                 if (index > 0) HorizontalDivider()
                 SelectedParticipant(p, index, actions, onReplace = { replacing = p.signer.id })
+            }
+        }
+
+        if (state.groups.isNotEmpty()) {
+            SectionCard(title = "Grupos") {
+                Text("Adiciona de uma vez os contatos do grupo.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    state.groups.forEach { g ->
+                        AssistChip(
+                            onClick = { actions.onAddGroup(g) },
+                            label = { Text("${g.nome} (${g.memberIds.size})") },
+                            leadingIcon = { Icon(Icons.Default.Groups, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                        )
+                    }
+                }
             }
         }
 
@@ -459,7 +530,39 @@ private fun FieldsStep(state: WizardUiState, renderer: PdfDocumentRenderer?, act
     val active = state.participants.getOrNull(activeIndex)
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        state.appliedTemplate?.let { TemplateBanner(it, actions.onUndoTemplate) }
         Text("Escolha o signatário, a página e toque em \"+ Campo\". Arraste para posicionar.", style = MaterialTheme.typography.bodyMedium)
+        if (state.templates.isNotEmpty()) {
+            var choosing by rememberSaveable { mutableStateOf(false) }
+            OutlinedButton(onClick = { choosing = true }, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Aplicar um modelo")
+            }
+            if (choosing) {
+                AlertDialog(
+                    onDismissRequest = { choosing = false },
+                    title = { Text("Aplicar um modelo") },
+                    text = {
+                        Column {
+                            Text("Os campos e signatários do modelo substituem os atuais (dá para desfazer).", style = MaterialTheme.typography.bodySmall)
+                            state.templates.forEach { t ->
+                                Row(Modifier.fillMaxWidth().clickable {
+                                    choosing = false
+                                    actions.onApplyTemplate(t.id)
+                                }.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                    Spacer(Modifier.width(12.dp))
+                                    Text(t.nome)
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {},
+                    dismissButton = { TextButton(onClick = { choosing = false }) { Text("Cancelar") } }
+                )
+            }
+        }
 
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(state.participants, key = { it.signer.id }) { p ->
@@ -491,10 +594,21 @@ private fun FieldsStep(state: WizardUiState, renderer: PdfDocumentRenderer?, act
             }
         }
 
+        Text("Campos do signatário", style = MaterialTheme.typography.labelLarge)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            FieldType.entries.forEach { t ->
+                FilterChip(
+                    selected = state.newFieldType == t,
+                    onClick = { actions.onFieldType(t) },
+                    label = { Text(t.label, style = MaterialTheme.typography.labelMedium) }
+                )
+            }
+        }
+
         Button(onClick = actions.onAddField, enabled = active != null, modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Default.Add, contentDescription = null)
             Spacer(Modifier.width(8.dp))
-            Text("Campo para ${active?.signer?.nome?.substringBefore(' ') ?: "..."} na página ${state.currentPage}")
+            Text("${state.newFieldType.label} para ${active?.signer?.nome?.substringBefore(' ') ?: "..."} (pág. ${state.currentPage})", maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
 
         EditablePage(
@@ -549,7 +663,8 @@ private fun EditablePage(
                     x = f.x, y = f.y, width = f.width, height = f.height,
                     pageWidth = pageWidth, pageHeight = pageHeight,
                     color = color,
-                    label = participants.getOrNull(index)?.signer?.nome?.substringBefore(' ') ?: "?",
+                    label = (participants.getOrNull(index)?.signer?.nome?.substringBefore(' ') ?: "?") +
+                        if (f.tipo == FieldType.ASSINATURA) "" else " • ${f.tipo.label}",
                     highlighted = selected,
                     modifier = Modifier
                         .pointerInput(f.localId, wPx, hPx) {
@@ -597,6 +712,9 @@ private fun ReviewStep(state: WizardUiState, renderer: PdfDocumentRenderer?, act
                 Text("${it.displayName} • ${it.info.pageCount} página(s) • ${formatBytes(it.sizeBytes)}", style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            val cats = DocumentRules.parseCategories(state.categorias)
+            Text("Pasta: ${state.pasta.ifBlank { Document.DEFAULT_FOLDER }}" + if (cats.isEmpty()) "" else " • Categorias: ${cats.joinToString()}",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedButton(onClick = { showFullPdf = true }, enabled = state.pdf != null, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
                 Icon(Icons.Default.PictureAsPdf, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
@@ -611,7 +729,8 @@ private fun ReviewStep(state: WizardUiState, renderer: PdfDocumentRenderer?, act
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(p.signer.nome, style = MaterialTheme.typography.bodyMedium)
-                        Text("${p.roleLabel.label} • ${if (p.required) "obrigatório" else "opcional"} • ${state.fields.count { it.signerId == p.signer.id }} campo(s)",
+                        Text("${p.roleLabel.label} • ${if (p.required) "obrigatório" else "opcional"} • " +
+                            state.fields.filter { it.signerId == p.signer.id }.groupingBy { it.tipo }.eachCount().entries.joinToString { (t, n) -> "$n ${t.label.lowercase()}" },
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
@@ -660,7 +779,28 @@ private fun ReviewStep(state: WizardUiState, renderer: PdfDocumentRenderer?, act
 }
 
 @Composable
-private fun SuccessStep(outcome: SendOutcome.Success, actions: WizardActions) {
+private fun SuccessStep(outcome: SendOutcome.Success, state: WizardUiState, actions: WizardActions) {
+    var naming by rememberSaveable { mutableStateOf(false) }
+    if (naming) {
+        var nome by rememberSaveable { mutableStateOf(state.titulo) }
+        AlertDialog(
+            onDismissRequest = { naming = false },
+            title = { Text("Salvar como modelo") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Guarda quem assina e onde fica cada campo. Quando você subir um PDF com o mesmo layout (ex.: outro NDA), as caixas entram posicionadas sozinhas.")
+                    OutlinedTextField(nome, { nome = it.take(DocumentRules.MAX_TITLE) }, label = { Text("Nome do modelo") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    naming = false
+                    actions.onSaveTemplate(nome)
+                }, enabled = nome.isNotBlank()) { Text("Salvar", fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = { TextButton(onClick = { naming = false }) { Text("Cancelar") } }
+        )
+    }
     Column(
         Modifier.fillMaxSize().padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -675,6 +815,42 @@ private fun SuccessStep(outcome: SendOutcome.Success, actions: WizardActions) {
         Button(onClick = { actions.onOpenDocument(outcome.documentId) }, modifier = Modifier.fillMaxWidth()) { Text("Acompanhar documento") }
         Spacer(Modifier.height(8.dp))
         OutlinedButton(onClick = actions.onClose, modifier = Modifier.fillMaxWidth()) { Text("Voltar ao início") }
+        Spacer(Modifier.height(8.dp))
+        val saved = state.templateSaved
+        if (saved == null) {
+            TextButton(onClick = { naming = true }, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Salvar como modelo")
+            }
+        } else {
+            Text(saved, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** Aviso de modelo aplicado: qual, quão parecido, quantos campos acharam o texto âncora, e "Desfazer". */
+@Composable
+private fun TemplateBanner(t: AppliedTemplate, onUndo: () -> Unit) {
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer), modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    if (t.auto) "Campos posicionados pelo modelo \"${t.nome}\"" else "Modelo \"${t.nome}\" aplicado",
+                    style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+                val detalhes = buildList {
+                    if (t.auto) add("${(t.score * 100).toInt()}% parecido")
+                    add("${t.anchored} de ${t.total} campo(s) achados pelo texto")
+                    if (t.anchored < t.total) add("os demais na posição do modelo")
+                    if (t.missingSigners > 0) add("${t.missingSigners} contato(s) do modelo não existem mais")
+                }
+                Text(detalhes.joinToString(" • ") + ". Confira antes de enviar.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+            }
+            TextButton(onClick = onUndo) { Text("Desfazer") }
+        }
     }
 }
 
@@ -768,3 +944,16 @@ fun WizardSuccessPreview() = LetsSignTheme {
 @ScreenPreviews
 @Composable
 fun WizardFullPdfPreview() = LetsSignTheme { FullPdfDialog(previewBase, renderer = null, onClose = {}) }
+
+@ScreenPreviews
+@Composable
+fun WizardTemplateAppliedPreview() = LetsSignTheme {
+    NewDocumentContent(
+        previewBase.copy(
+            step = WizardStep.CAMPOS,
+            appliedTemplate = AppliedTemplate("NDA padrão", 0.87, 2, 3, 0, auto = true, emptyList(), emptyList()),
+            templates = listOf(com.letsign.mobile.domain.model.DocumentTemplate("t1", "NDA padrão", "d1", "2026-10-31T12:00:00.000Z"))
+        ),
+        WizardActions()
+    )
+}

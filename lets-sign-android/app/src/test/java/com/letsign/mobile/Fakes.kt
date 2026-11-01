@@ -6,6 +6,8 @@ import com.letsign.mobile.data.pdf.PdfInfo
 import com.letsign.mobile.data.pdf.PickedPdf
 import com.letsign.mobile.domain.model.ActionResult
 import com.letsign.mobile.domain.model.Document
+import com.letsign.mobile.domain.model.DocumentTemplate
+import com.letsign.mobile.domain.model.SignerGroup
 import com.letsign.mobile.domain.model.LocalPdf
 import com.letsign.mobile.domain.model.PdfKind
 import com.letsign.mobile.domain.model.SendDraft
@@ -58,20 +60,31 @@ class FakeDocumentRepository : DocumentRepository {
         return if (sendResults.size > 1) sendResults.removeAt(0) else sendResults.single()
     }
 
-    override suspend fun signDocument(id: String, signaturePngBase64: String, gestureMetadata: JsonObject?): Result<ActionResult> =
+    override suspend fun signDocument(id: String, signaturePngBase64: String, gestureMetadata: JsonObject?, rubricaPngBase64: String?): Result<ActionResult> =
         Result.failure(UnsupportedOperationException())
 
     override suspend fun rejectDocument(id: String, motivo: String): Result<ActionResult> = Result.failure(UnsupportedOperationException())
     override suspend fun getPdf(id: String, kind: PdfKind): Result<File> = Result.success(File("/tmp/$id.pdf"))
+    override suspend fun updateOrganization(id: String, pasta: String, categorias: List<String>): Result<Document> = Result.failure(UnsupportedOperationException())
+    override suspend fun sendReminder(id: String): Result<ActionResult> = Result.failure(UnsupportedOperationException())
+    override suspend fun setObservers(id: String, observerIds: List<String>): Result<Document> = Result.failure(UnsupportedOperationException())
+    override fun observeTemplates(): Flow<List<DocumentTemplate>> = flowOf(emptyList())
+    override suspend fun saveAsTemplate(id: String, nome: String): Result<DocumentTemplate> = Result.failure(UnsupportedOperationException())
+    override suspend fun deleteTemplate(templateId: String): Result<Unit> = Result.success(Unit)
+    override suspend fun createFromTemplate(templateId: String): Result<Document> = Result.failure(UnsupportedOperationException())
+    override suspend fun matchTemplate(pdf: File, templateId: String?): Result<com.letsign.mobile.domain.model.TemplateMatch?> = Result.success(null)
 }
 
 class FakeSignerRepository(signers: List<User>) : SignerRepository {
     private val flow = MutableStateFlow(signers)
     override fun observeSigners(): Flow<List<User>> = flow
     override suspend fun refreshSigners(): Result<Unit> = Result.success(Unit)
-    override suspend fun createSigner(nome: String, email: String, telefone: String, senha: String) = Result.failure<User>(UnsupportedOperationException())
-    override suspend fun updateSigner(id: String, nome: String, email: String, telefone: String, senha: String?) = Result.failure<User>(UnsupportedOperationException())
+    override suspend fun createSigner(nome: String, email: String, telefone: String, senha: String, cpf: String, dataNascimento: String) = Result.failure<User>(UnsupportedOperationException())
+    override suspend fun updateSigner(id: String, nome: String, email: String, telefone: String, senha: String?, cpf: String, dataNascimento: String) = Result.failure<User>(UnsupportedOperationException())
     override suspend fun deleteSigner(id: String): Result<Unit> = Result.success(Unit)
+    override fun observeGroups(): Flow<List<SignerGroup>> = flowOf(emptyList())
+    override suspend fun saveGroup(id: String?, nome: String, memberIds: List<String>) = Result.failure<SignerGroup>(UnsupportedOperationException())
+    override suspend fun deleteGroup(id: String): Result<Unit> = Result.success(Unit)
 }
 
 class FakePdfImporter(private val pages: Int = 3, private val importError: Exception? = null) : PdfImporter {

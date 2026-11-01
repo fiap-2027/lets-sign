@@ -26,7 +26,7 @@ class PdfStorage @Inject constructor(@param:ApplicationContext private val conte
     private val root get() = File(context.filesDir, "documentos")
     private val imports get() = File(context.cacheDir, "importados")
 
-    /** Copia o PDF escolhido pelo usuário (Storage Access Framework) para o app. */
+    /** Copia o PDF (ou .docx, convertido em PDF) escolhido pelo usuário (Storage Access Framework) para o app. */
     fun importFromUri(uri: Uri): ImportedPdf {
         val resolver = context.contentResolver
         var name = "documento.pdf"
@@ -38,7 +38,6 @@ class PdfStorage @Inject constructor(@param:ApplicationContext private val conte
             }
         }
         if (declaredSize > MAX_PDF_BYTES) throw PdfInvalidException("O arquivo tem mais de 15 MB, o limite permitido.")
-        if (!name.endsWith(".pdf", ignoreCase = true)) name += ".pdf"
 
         imports.mkdirs()
         val target = File(imports, "${UUID.randomUUID()}.pdf")
@@ -59,6 +58,30 @@ class PdfStorage @Inject constructor(@param:ApplicationContext private val conte
                 }
             }
         }
+        // O tipo vem do conteúdo, não do nome: .docx é um ZIP ("PK"), .doc antigo é OLE (D0 CF 11 E0).
+        val head = ByteArray(4).also { b -> target.inputStream().use { it.read(b) } }
+        when {
+            head[0] == 'P'.code.toByte() && head[1] == 'K'.code.toByte() -> {
+                val pdf = File(imports, "${UUID.randomUUID()}.pdf")
+                try {
+                    DocxConverter.writePdf(target.inputStream().use(DocxConverter::paragraphs), pdf)
+                } catch (e: PdfInvalidException) {
+                    pdf.delete()
+                    throw e
+                } catch (e: Exception) {
+                    pdf.delete()
+                    throw PdfInvalidException("Não foi possível converter o documento Word. Exporte-o como PDF e tente de novo.")
+                } finally {
+                    target.delete()
+                }
+                return ImportedPdf(pdf, name.substringBeforeLast('.') + ".pdf", pdf.length())
+            }
+            head.contentEquals(byteArrayOf(0xD0.toByte(), 0xCF.toByte(), 0x11, 0xE0.toByte())) -> {
+                target.delete()
+                throw PdfInvalidException("Arquivos .doc (Word 97-2003) não são aceitos. Salve como .docx ou PDF e tente de novo.")
+            }
+        }
+        if (!name.endsWith(".pdf", ignoreCase = true)) name += ".pdf"
         return ImportedPdf(target, name, target.length())
     }
 
