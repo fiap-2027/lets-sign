@@ -28,7 +28,10 @@ interface AuthRepository {
     suspend fun login(email: String, senha: String): Result<User>
     suspend fun register(nome: String, email: String, telefone: String?, senha: String): Result<User>
 
-    /** Encerra a sessão e apaga todos os dados locais (banco e PDFs) deste aparelho. */
+    /**
+     * Encerra a sessão. No modo local os dados ficam no aparelho (o banco é a fonte da verdade);
+     * no modo API o cache local (banco e PDFs) é apagado.
+     */
     suspend fun logout()
 }
 

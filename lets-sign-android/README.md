@@ -41,7 +41,7 @@ Desafio FIAP × LetsSign, Sprint 1 · Kotlin · Jetpack Compose · Room · Hilt
   </tr>
 </table>
 
-### No emulador, com o backend real (modo API, 25/10)
+### No emulador, ligado à API (teste de 25/10; a API entra na fase 2)
 
 <table>
   <tr>
@@ -108,9 +108,9 @@ Na tela de login, toque em **Carregar dados de demonstração**. Em cerca de 20 
 | Admin | `demo@easysign.com` | `demo123` |
 | Signatários | `joao@demo.com`, `mariana@demo.com`, `rafael@demo.com`, `beatriz@demo.com`, `lucas@demo.com`, `fernanda@demo.com` | `demo123` |
 
-### Modo API (opcional)
+### Modo API (fase 2, 2027)
 
-Os repositórios seguem interfaces (`domain/repository`), então o mesmo app também fala com o backend REST (`letssign_backend/nodejs_space`, porta 3000), usando o Room como cache:
+Os repositórios seguem interfaces (`domain/repository`), então o mesmo app já sabe falar com uma API REST na porta 3000, usando o Room como cache. A API não faz parte desta entrega; quando ela existir:
 
 ```bash
 ./gradlew assembleDebug -Pmodo=api                                        # emulador (10.0.2.2:3000)
